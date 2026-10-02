@@ -19,8 +19,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.example.ui.components.ConnectToParentDialog
 import com.example.ui.components.PinDialog
 import com.example.ui.screens.ChildDashboardScreen
+import com.example.ui.screens.DeviceRoleSelectionScreen
 import com.example.ui.screens.ParentDashboardScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppMode
@@ -54,6 +56,10 @@ class MainActivity : ComponentActivity() {
                 val qrRemainingSeconds by viewModel.qrRemainingSeconds.collectAsState()
                 val qrPayloadJson by viewModel.qrPayloadJson.collectAsState()
                 val audits by viewModel.recentAudits.collectAsState()
+                val pairingCode by viewModel.pairingCode.collectAsState()
+                val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
+                val connectedParentName by viewModel.connectedParentName.collectAsState()
+                val showConnectDialog by viewModel.showConnectDialog.collectAsState()
                 val statusMessage by viewModel.statusMessage.collectAsState()
 
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -80,6 +86,11 @@ class MainActivity : ComponentActivity() {
                             .padding(innerPadding)
                     ) {
                         when (appMode) {
+                            AppMode.ROLE_SELECTION -> {
+                                DeviceRoleSelectionScreen(
+                                    onRoleSelected = { viewModel.selectDeviceRole(it) }
+                                )
+                            }
                             AppMode.CHILD -> {
                                 ChildDashboardScreen(
                                     policy = policy,
@@ -90,6 +101,11 @@ class MainActivity : ComponentActivity() {
                                     isMandatoryDnsEnforced = isMandatoryDnsEnforced,
                                     enforcedDnsHost = enforcedDnsHost,
                                     deviceName = deviceInfo?.deviceName,
+                                    isChildConnectedToParent = isChildConnectedToParent,
+                                    connectedParentName = connectedParentName,
+                                    onOpenConnectDialog = { viewModel.openConnectDialog() },
+                                    onUnpairDevice = { viewModel.unpairChildDevice() },
+                                    onSwitchRoleRequested = { viewModel.openRoleSelection() },
                                     onOpenParentLogin = { viewModel.requestSwitchToParentMode() },
                                     onRefreshUsage = { viewModel.refreshUsage() }
                                 )
@@ -110,6 +126,7 @@ class MainActivity : ComponentActivity() {
                                     qrBitmap = qrBitmap,
                                     qrRemainingSeconds = qrRemainingSeconds,
                                     audits = audits,
+                                    pairingCode = pairingCode,
                                     onSelectTab = { viewModel.selectParentTab(it) },
                                     onSwitchToChildMode = { viewModel.switchToChildMode() },
                                     onToggleSupervision = { viewModel.toggleSupervision(it) },
@@ -135,9 +152,26 @@ class MainActivity : ComponentActivity() {
                                     onDeleteSchedule = { viewModel.deleteSchedule(it) },
                                     onRegenerateQr = { viewModel.generatePairingQr() },
                                     onSimulatePairing = { viewModel.simulateEnrollmentWithQr(qrPayloadJson) },
+                                    onPushSync = { viewModel.pushSyncToChild() },
+                                    onUnpairChild = { viewModel.unpairChildDevice() },
+                                    onSwitchRoleRequested = { viewModel.openRoleSelection() },
                                     onChangePinRequested = { viewModel.requestChangePin() }
                                 )
                             }
+                        }
+
+                        // Connect to Parent Phone Dialog on Child Device
+                        if (showConnectDialog) {
+                            ConnectToParentDialog(
+                                parentGeneratedCode = pairingCode,
+                                onDismiss = { viewModel.closeConnectDialog() },
+                                onConnectWithCode = { code, childName, parentName ->
+                                    viewModel.connectChildWithCode(code, childName, parentName)
+                                },
+                                onConnectWithQr = { qr ->
+                                    viewModel.connectChildWithQr(qr)
+                                }
+                            )
                         }
 
                         // PIN Protection Dialog (Setup, Unlock, Lockout)

@@ -95,4 +95,24 @@ class EnrollmentTest {
         val result = enrollmentManager.processEnrollmentQr(payload.toJson(), "secret_B")
         assertEquals(EnrollmentResult.SignatureMismatch, result)
     }
+
+    @Test
+    fun `processPairingCode with valid 6-digit code successfully enrolls child device`() = runTest {
+        val result = enrollmentManager.processPairingCode("849210", "Sami's Phone", "Abbu's Phone")
+        assertTrue("Pairing with code must succeed", result is EnrollmentResult.Success)
+
+        val enrolledDevice = (result as EnrollmentResult.Success).device
+        assertEquals("Sami's Phone", enrolledDevice.deviceName)
+        assertEquals(EnrollmentStatus.ENROLLED, enrolledDevice.enrollmentStatus)
+
+        val retrieved = policyRepository.getDevice()
+        assertNotNull(retrieved)
+        assertEquals(EnrollmentStatus.ENROLLED, retrieved?.enrollmentStatus)
+    }
+
+    @Test
+    fun `processPairingCode with invalid code length returns InvalidQr`() = runTest {
+        val result = enrollmentManager.processPairingCode("123", "Sami's Phone")
+        assertEquals(EnrollmentResult.InvalidQr, result)
+    }
 }

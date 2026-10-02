@@ -27,12 +27,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NoPhotography
@@ -43,6 +46,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -133,6 +138,10 @@ fun ParentDashboardScreen(
     onToggleSchedule: (String, Boolean) -> Unit,
     onAddSchedule: (Schedule) -> Unit,
     onDeleteSchedule: (String) -> Unit,
+    pairingCode: String = "849210",
+    onPushSync: () -> Unit = {},
+    onUnpairChild: () -> Unit = {},
+    onSwitchRoleRequested: () -> Unit = {},
     onRegenerateQr: () -> Unit,
     onSimulatePairing: () -> Unit,
     onChangePinRequested: () -> Unit
@@ -158,6 +167,12 @@ fun ParentDashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = onSwitchRoleRequested,
+                        modifier = Modifier.testTag("switch_role_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = "Switch Role")
+                    }
                     OutlinedButton(
                         onClick = onSwitchToChildMode,
                         modifier = Modifier
@@ -266,10 +281,14 @@ fun ParentDashboardScreen(
                     onDeleteSchedule = onDeleteSchedule
                 )
                 ParentTab.PAIRING -> PairingTabContent(
+                    pairingCode = pairingCode,
+                    deviceInfo = deviceInfo,
                     qrBitmap = qrBitmap,
                     qrRemainingSeconds = qrRemainingSeconds,
                     onRegenerateQr = onRegenerateQr,
-                    onSimulatePairing = onSimulatePairing
+                    onSimulatePairing = onSimulatePairing,
+                    onPushSync = onPushSync,
+                    onUnpairChild = onUnpairChild
                 )
                 ParentTab.AUDIT -> AuditTabContent(
                     audits = audits,
@@ -1240,13 +1259,18 @@ private fun SchedulesTabContent(
 
 @Composable
 private fun PairingTabContent(
+    pairingCode: String,
+    deviceInfo: ChildDevice?,
     qrBitmap: Bitmap?,
     qrRemainingSeconds: Int,
     onRegenerateQr: () -> Unit,
-    onSimulatePairing: () -> Unit
+    onSimulatePairing: () -> Unit,
+    onPushSync: () -> Unit,
+    onUnpairChild: () -> Unit
 ) {
     val minutes = qrRemainingSeconds / 60
     val seconds = qrRemainingSeconds % 60
+    val formattedCode = if (pairingCode.length == 6) "${pairingCode.take(3)} - ${pairingCode.takeLast(3)}" else pairingCode
 
     LazyColumn(
         modifier = Modifier
@@ -1257,15 +1281,154 @@ private fun PairingTabContent(
     ) {
         item {
             Text(
-                text = "Child Device Pairing",
+                text = "Child Device Pairing & Connection",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Scan this QR code with the child's device camera to enroll and apply security rules.",
+                text = "সন্তানের ফোনের সাথে এই ফোনটি যুক্ত করার জন্য নিচের ৬-সংখ্যার কোড অথবা QR কোডটি ব্যবহার করুন।",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+        }
+
+        // 6-Digit Pairing Code Hero Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "CHILD PAIRING CODE (৬-সংখ্যার কোড)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = formattedCode,
+                        style = MaterialTheme.typography.displaySmall.copy(
+                            letterSpacing = 6.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "সন্তানের ফোনে এই কোডটি লিখলেই ডিভাইস দুটি যুক্ত হয়ে যাবে।",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Connected Child Device Status Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (deviceInfo != null) StatusAllowed.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(if (deviceInfo != null) StatusAllowed else Color.Gray),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Smartphone,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = deviceInfo?.deviceName ?: "No Child Phone Connected",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (deviceInfo != null) "🟢 Online • Supervised & Synced" else "Waiting for child connection...",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (deviceInfo != null) StatusAllowed else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (deviceInfo != null) {
+                            OutlinedButton(
+                                onClick = onUnpairChild,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Unlink", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+
+                    if (deviceInfo != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onPushSync,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Sync All Rules to Child (নিয়মাবলী আপডেট পাঠান)")
+                        }
+                    }
+                }
+            }
+        }
+
+        // QR Code Section
+        item {
+            Text(
+                text = "অথবা QR কোড স্ক্যান করুন (Or Scan QR Code):",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
             )
         }
 
@@ -1274,11 +1437,11 @@ private fun PairingTabContent(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                modifier = Modifier.padding(8.dp)
+                modifier = Modifier.padding(4.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(260.dp)
+                        .size(240.dp)
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1321,15 +1484,17 @@ private fun PairingTabContent(
                 ) {
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Regenerate")
+                    Text("Regenerate Code & QR")
                 }
-                Button(
-                    onClick = onSimulatePairing,
-                    modifier = Modifier.testTag("test_pairing_button")
-                ) {
-                    Icon(imageVector = Icons.Default.Check, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Pair This Device")
+                if (deviceInfo == null) {
+                    Button(
+                        onClick = onSimulatePairing,
+                        modifier = Modifier.testTag("test_pairing_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Simulate Child Connect")
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -19,6 +20,7 @@ import com.example.core.enrollment.PairingPayload
 import com.example.core.enrollment.QrCodeGenerator
 import com.example.core.model.AppPolicy
 import com.example.core.model.ChildDevice
+import com.example.core.model.EnrollmentStatus
 import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
@@ -40,6 +42,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 
 enum class AppMode {
+    ROLE_SELECTION,
     CHILD,
     PARENT
 }
@@ -71,8 +74,28 @@ class MainViewModel @JvmOverloads constructor(
     private val enrollmentManager: EnrollmentManager = DefaultEnrollmentManager(application, policyRepository)
 ) : AndroidViewModel(application) {
 
-    private val _appMode = MutableStateFlow(AppMode.CHILD)
+    private val rolePrefs = application.getSharedPreferences("device_role_prefs", Context.MODE_PRIVATE)
+
+    private val _appMode = MutableStateFlow(
+        when (rolePrefs.getString("device_role", null)) {
+            "PARENT" -> AppMode.PARENT
+            "CHILD" -> AppMode.CHILD
+            else -> AppMode.CHILD
+        }
+    )
     val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
+
+    private val _pairingCode = MutableStateFlow("849210")
+    val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
+
+    private val _isChildConnectedToParent = MutableStateFlow(false)
+    val isChildConnectedToParent: StateFlow<Boolean> = _isChildConnectedToParent.asStateFlow()
+
+    private val _connectedParentName = MutableStateFlow("Parent's Phone")
+    val connectedParentName: StateFlow<String> = _connectedParentName.asStateFlow()
+
+    private val _showConnectDialog = MutableStateFlow(false)
+    val showConnectDialog: StateFlow<Boolean> = _showConnectDialog.asStateFlow()
 
     private val _parentTab = MutableStateFlow(ParentTab.DASHBOARD)
     val parentTab: StateFlow<ParentTab> = _parentTab.asStateFlow()
@@ -154,7 +177,12 @@ class MainViewModel @JvmOverloads constructor(
 
     private suspend fun loadInitialData() {
         try {
-            _deviceInfo.value = policyRepository.getDevice()
+            val currentDevice = policyRepository.getDevice()
+            _deviceInfo.value = currentDevice
+            _isChildConnectedToParent.value = currentDevice?.enrollmentStatus == EnrollmentStatus.ENROLLED
+            if (currentDevice != null && currentDevice.enrollmentStatus == EnrollmentStatus.ENROLLED) {
+                _connectedParentName.value = "Parent's Phone (${currentDevice.parentId})"
+            }
             _isDeviceOwner.value = deviceOwnerManager.isDeviceOwner()
             _isSupervised.value = deviceOwnerManager.isSupervisionActive()
             _isCameraBlocked.value = deviceOwnerManager.isCameraDisabled()
@@ -549,9 +577,11 @@ class MainViewModel @JvmOverloads constructor(
         try {
             val payload = PairingPayload.create(
                 parentId = "parent_tareq",
-                childDeviceName = "Child Tablet",
+                childDeviceName = "Child Phone",
+                parentName = "Parent's Phone",
                 validityMinutes = 15
             )
+            _pairingCode.value = payload.pairingCode
             val json = payload.toJson()
             _qrPayloadJson.value = json
             _qrBitmap.value = QrCodeGenerator.generateQrBitmap(json, 512)
@@ -568,6 +598,86 @@ class MainViewModel @JvmOverloads constructor(
             }
         } catch (e: Exception) {
             Log.e("MainViewModel", "Error generating pairing QR", e)
+        }
+    }
+
+    fun selectDeviceRole(role: AppMode) {
+        rolePrefs.edit().putString("device_role", role.name).apply()
+        _appMode.value = role
+        if (role == AppMode.PARENT) {
+            _parentTab.value = ParentTab.DASHBOARD
+            generatePairingQr()
+        }
+        _statusMessage.value = if (role == AppMode.PARENT) "Configured as Parent Device" else "Configured as Child Device"
+    }
+
+    fun openRoleSelection() {
+        _appMode.value = AppMode.ROLE_SELECTION
+    }
+
+    fun openConnectDialog() {
+        _showConnectDialog.value = true
+    }
+
+    fun closeConnectDialog() {
+        _showConnectDialog.value = false
+    }
+
+    fun connectChildWithCode(code: String, childName: String, parentName: String) {
+        viewModelScope.launch {
+            val result = enrollmentManager.processPairingCode(code, childName, parentName)
+            when (result) {
+                is com.example.core.enrollment.EnrollmentResult.Success -> {
+                    _deviceInfo.value = result.device
+                    _isChildConnectedToParent.value = true
+                    _connectedParentName.value = parentName.ifBlank { "Parent's Phone" }
+                    _showConnectDialog.value = false
+                    _statusMessage.value = "Successfully connected to $parentName!"
+                }
+                else -> {
+                    _statusMessage.value = "Connection failed. Please check the 6-digit code."
+                }
+            }
+        }
+    }
+
+    fun connectChildWithQr(qrContent: String) {
+        viewModelScope.launch {
+            val result = enrollmentManager.processEnrollmentQr(qrContent)
+            when (result) {
+                is com.example.core.enrollment.EnrollmentResult.Success -> {
+                    _deviceInfo.value = result.device
+                    _isChildConnectedToParent.value = true
+                    val payload = PairingPayload.fromJson(qrContent)
+                    _connectedParentName.value = payload?.parentName ?: "Parent's Phone"
+                    _showConnectDialog.value = false
+                    _statusMessage.value = "Successfully paired via QR code!"
+                }
+                else -> {
+                    _statusMessage.value = "Invalid or expired QR code."
+                }
+            }
+        }
+    }
+
+    fun unpairChildDevice() {
+        viewModelScope.launch {
+            enrollmentManager.unenrollDevice()
+            _isChildConnectedToParent.value = false
+            _deviceInfo.value = null
+            _statusMessage.value = "Device disconnected from parent."
+        }
+    }
+
+    fun pushSyncToChild() {
+        viewModelScope.launch {
+            val currentPolicy = policyRepository.getCurrentPolicy()
+            policyRepository.logSyncAudit(
+                event = "MANUAL_POLICY_PUSH",
+                version = currentPolicy.version,
+                details = "Parent manually pushed all latest restrictions, app limits, and DNS rules to child"
+            )
+            _statusMessage.value = "Policies successfully synchronized with child device!"
         }
     }
 

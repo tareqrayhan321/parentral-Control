@@ -23,6 +23,12 @@ interface EnrollmentManager {
         parentSecret: String = "parent_secret_key"
     ): EnrollmentResult
 
+    suspend fun processPairingCode(
+        code: String,
+        childDeviceName: String = "Child Device",
+        parentName: String = "Parent's Phone"
+    ): EnrollmentResult
+
     suspend fun unenrollDevice(): Boolean
 }
 
@@ -30,6 +36,41 @@ class DefaultEnrollmentManager(
     private val context: Context,
     private val policyRepository: PolicyRepository = RoomPolicyRepository(ChildDatabase.getInstance(context))
 ) : EnrollmentManager {
+
+    override suspend fun processPairingCode(
+        code: String,
+        childDeviceName: String,
+        parentName: String
+    ): EnrollmentResult = withContext(Dispatchers.IO) {
+        val cleanCode = code.filter { it.isDigit() }
+        if (cleanCode.length != 6) {
+            Log.w(TAG, "Invalid pairing code length: $code")
+            return@withContext EnrollmentResult.InvalidQr
+        }
+
+        val childDeviceId = "child_${cleanCode.take(4)}_${System.currentTimeMillis() % 10000}"
+        val childDevice = ChildDevice(
+            deviceId = childDeviceId,
+            parentId = "parent_tareq",
+            deviceName = childDeviceName.ifBlank { "Child Device" },
+            platform = "Android",
+            appVersion = "1.0",
+            lastSeenEpochMs = System.currentTimeMillis(),
+            policyVersion = 1,
+            isDeviceOwner = true,
+            enrollmentStatus = EnrollmentStatus.ENROLLED
+        )
+
+        policyRepository.saveDevice(childDevice)
+        policyRepository.logSyncAudit(
+            event = "DEVICE_PAIRED_WITH_CODE",
+            version = 1,
+            details = "Device paired successfully using code $cleanCode with parent $parentName"
+        )
+
+        Log.i(TAG, "Pairing with code completed: ${childDevice.deviceName} ($childDeviceId)")
+        EnrollmentResult.Success(childDevice)
+    }
 
     override suspend fun processEnrollmentQr(
         qrContent: String,

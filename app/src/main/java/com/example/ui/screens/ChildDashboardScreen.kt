@@ -19,9 +19,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NoPhotography
 import androidx.compose.material.icons.filled.Public
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -73,6 +76,11 @@ fun ChildDashboardScreen(
     isMandatoryDnsEnforced: Boolean = true,
     enforcedDnsHost: String = "family-filter-dns.cleanbrowsing.org",
     deviceName: String?,
+    isChildConnectedToParent: Boolean = false,
+    connectedParentName: String = "Parent's Phone",
+    onOpenConnectDialog: () -> Unit = {},
+    onUnpairDevice: () -> Unit = {},
+    onSwitchRoleRequested: () -> Unit = {},
     onOpenParentLogin: () -> Unit,
     onRefreshUsage: () -> Unit
 ) {
@@ -112,9 +120,9 @@ fun ChildDashboardScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isSupervised) "Supervised by Parent • Protected" else "Supervision Paused",
+                                text = if (isChildConnectedToParent) "Linked with Parent • Protected" else "Not Linked to Parent Phone",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isSupervised) StatusAllowed else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isChildConnectedToParent) StatusAllowed else MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -155,6 +163,137 @@ fun ChildDashboardScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Parent Phone Connection Card
+            item {
+                Spacer(modifier = Modifier.height(2.dp))
+                if (!isChildConnectedToParent) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.error),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LinkOff,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onError,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "অভিভাবকের ফোনের সাথে যুক্ত নয়",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        text = "Not Connected to Parent Phone",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "অভিভাবকের ফোন থেকে নিয়ন্ত্রণ, অ্যাপ ব্লক ও স্ক্রিন টাইম মনিটর করার জন্য নিচের বাটনে চাপ দিয়ে অভিভাবকের ফোনের সাথে কানেক্ট করুন।",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onOpenConnectDialog,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("connect_to_parent_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Cable,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Connect to Parent (অভিভাবকের সাথে কানেক্ট করুন)", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = StatusAllowed.copy(alpha = 0.12f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(StatusAllowed),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Cable,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Linked to $connectedParentName",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = StatusAllowed
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = StatusAllowed.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "ONLINE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = StatusAllowed,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "অভিভাবক দ্বারা দূর থেকে সুরক্ষিত ও সিঙ্কড",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             // Supervision & Safety Banner
             item {
                 Spacer(modifier = Modifier.height(4.dp))
