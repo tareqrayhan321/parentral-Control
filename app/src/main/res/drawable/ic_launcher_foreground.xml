@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="0"
+        android:translateY="0">
+        <!-- Shield Background Outer -->
+        <path
+            android:fillColor="#38BDF8"
+            android:pathData="M54,22 C68,26 80,24 82,24 C82,50 72,72 54,86 C36,72 26,50 26,24 C28,24 40,26 54,22 Z" />
+
+        <!-- Shield Inner Accent -->
+        <path
+            android:fillColor="#0284C7"
+            android:pathData="M54,26 C65,29 74,28 76,28 C76,49 68,67 54,79 C40,67 32,49 32,28 C34,28 43,29 54,26 Z" />
+
+        <!-- Center Keyhole / Guardian Silhouette -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,40 C58.42,40 62,43.58 62,48 C62,51.35 59.95,54.22 57,55.42 L57,64 C57,65.66 55.66,67 54,67 C52.34,67 51,65.66 51,64 L51,55.42 C48.05,54.22 46,51.35 46,48 C46,43.58 49.58,40 54,40 Z" />
+    </group>
+</vector>

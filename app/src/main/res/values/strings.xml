@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Parental Control</string>
+    <string name="device_admin_label">Parental Control Device Administrator</string>
+    <string name="device_admin_description">Enforces parental time limits, app scheduling, and device protection.</string>
+</resources>

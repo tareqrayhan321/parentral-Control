@@ -1,0 +1,6 @@
+{
+  "name": "Parental Control",
+  "description": "Production-grade Android parental control and device management system with remote policy enforcement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
