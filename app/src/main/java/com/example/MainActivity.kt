@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import com.example.ui.components.ConnectToParentDialog
 import com.example.ui.components.PinDialog
 import com.example.ui.screens.ChildDashboardScreen
+import com.example.ui.screens.DeviceProtectionSetupDialog
 import com.example.ui.screens.DeviceRoleSelectionScreen
 import com.example.ui.screens.ParentDashboardScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
                 val connectedParentName by viewModel.connectedParentName.collectAsState()
                 val showConnectDialog by viewModel.showConnectDialog.collectAsState()
+                val showProtectionDialog by viewModel.showProtectionDialog.collectAsState()
                 val statusMessage by viewModel.statusMessage.collectAsState()
 
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -106,6 +108,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenConnectDialog = { viewModel.openConnectDialog() },
                                     onUnpairDevice = { viewModel.unpairChildDevice() },
                                     onSwitchRoleRequested = { viewModel.openRoleSelection() },
+                                    onOpenProtectionSetup = { viewModel.openProtectionSetup() },
                                     onOpenParentLogin = { viewModel.requestSwitchToParentMode() },
                                     onRefreshUsage = { viewModel.refreshUsage() }
                                 )
@@ -171,6 +174,13 @@ class MainActivity : ComponentActivity() {
                                 onConnectWithQr = { qr ->
                                     viewModel.connectChildWithQr(qr)
                                 }
+                            )
+                        }
+
+                        // Full Device Protection Permissions Wizard Dialog
+                        if (showProtectionDialog) {
+                            DeviceProtectionSetupDialog(
+                                onDismiss = { viewModel.closeProtectionSetup() }
                             )
                         }
 

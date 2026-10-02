@@ -97,6 +97,9 @@ class MainViewModel @JvmOverloads constructor(
     private val _showConnectDialog = MutableStateFlow(false)
     val showConnectDialog: StateFlow<Boolean> = _showConnectDialog.asStateFlow()
 
+    private val _showProtectionDialog = MutableStateFlow(false)
+    val showProtectionDialog: StateFlow<Boolean> = _showProtectionDialog.asStateFlow()
+
     private val _parentTab = MutableStateFlow(ParentTab.DASHBOARD)
     val parentTab: StateFlow<ParentTab> = _parentTab.asStateFlow()
 
@@ -621,6 +624,14 @@ class MainViewModel @JvmOverloads constructor(
 
     fun closeConnectDialog() {
         _showConnectDialog.value = false
+    }
+
+    fun openProtectionSetup() {
+        _showProtectionDialog.value = true
+    }
+
+    fun closeProtectionSetup() {
+        _showProtectionDialog.value = false
     }
 
     fun connectChildWithCode(code: String, childName: String, parentName: String) {

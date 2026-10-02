@@ -2,4 +2,6 @@
     <string name="app_name">Parental Control</string>
     <string name="device_admin_label">Parental Control Device Administrator</string>
     <string name="device_admin_description">Enforces parental time limits, app scheduling, and device protection.</string>
+    <string name="accessibility_service_label">Parental Control Protection Service</string>
+    <string name="accessibility_service_description">Detects and blocks unauthorized apps, enforces bedtime schedules, and prevents tampering with parental restrictions.</string>
 </resources>

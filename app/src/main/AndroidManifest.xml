@@ -22,6 +22,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Full-screen overlay to block restricted apps immediately -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Foreground service for continuous real-time supervision -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Battery optimization exemption so OS does not terminate parental supervision -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Modern package visibility: Query launcher apps installed on child device -->
     <queries>
         <intent>
@@ -87,6 +97,38 @@
         <receiver
             android:name=".child.scheduler.MidnightResetReceiver"
             android:exported="false" />
+
+        <!-- Full-screen blocking UI when child attempts to open restricted apps -->
+        <activity
+            android:name=".child.ui.AppBlockActivity"
+            android:theme="@style/Theme.MyApplication"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTop"
+            android:exported="false" />
+
+        <!-- Real-time App Interception & Accessibility Service -->
+        <service
+            android:name=".child.service.ParentalAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Foreground Monitoring Service for continuous screen time tracking -->
+        <service
+            android:name=".child.service.ParentalMonitoringService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parental control screen time and policy enforcement" />
+        </service>
 
     </application>
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
@@ -52,7 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.example.child.protection.DeviceProtectionManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,6 +84,7 @@ fun ChildDashboardScreen(
     onOpenConnectDialog: () -> Unit = {},
     onUnpairDevice: () -> Unit = {},
     onSwitchRoleRequested: () -> Unit = {},
+    onOpenProtectionSetup: () -> Unit = {},
     onOpenParentLogin: () -> Unit,
     onRefreshUsage: () -> Unit
 ) {
@@ -128,6 +132,12 @@ fun ChildDashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = onOpenProtectionSetup,
+                        modifier = Modifier.testTag("protection_setup_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.AdminPanelSettings, contentDescription = "Protection Permissions")
+                    }
                     IconButton(
                         onClick = onRefreshUsage,
                         modifier = Modifier.testTag("refresh_usage_button")
@@ -294,6 +304,80 @@ fun ChildDashboardScreen(
                     }
                 }
             }
+
+            // Device Control & Permissions Status Card
+            item {
+                val context = LocalContext.current
+                val isAllCrucial = DeviceProtectionManager.isAllCrucialGranted(context)
+                val permissions = DeviceProtectionManager.getAllPermissionsStatus(context)
+                val grantedCount = permissions.count { it.isGranted }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isAllCrucial) StatusAllowed.copy(alpha = 0.08f)
+                        else MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isAllCrucial) StatusAllowed
+                                            else MaterialTheme.colorScheme.tertiary
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AdminPanelSettings,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (isAllCrucial) "ডিভাইস সুরক্ষা সম্পূর্ণ সচল" else "ডিভাইস নিয়ন্ত্রণ পারমিশন বাকি",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "পারমিশন অবস্থা: $grantedCount/${permissions.size} টি সক্রিয়",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isAllCrucial) StatusAllowed else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = onOpenProtectionSetup,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("open_protection_setup_btn")
+                            ) {
+                                Text(if (isAllCrucial) "সেটিংস" else "সেটআপ", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Supervision & Safety Banner
             item {
                 Spacer(modifier = Modifier.height(4.dp))
