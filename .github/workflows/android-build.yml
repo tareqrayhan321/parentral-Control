@@ -25,6 +25,22 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Set up Android SDK tools
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$RUNNER_TEMP/android-sdk}}"
+          TOOLS_DIR="$SDK_ROOT/cmdline-tools"
+          mkdir -p "$TOOLS_DIR"
+          curl -fsSL --retry 3 \
+            -o "$RUNNER_TEMP/android-cmdline-tools.zip" \
+            https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+          rm -rf "$RUNNER_TEMP/android-cmdline-tools" "$TOOLS_DIR/latest"
+          unzip -q "$RUNNER_TEMP/android-cmdline-tools.zip" -d "$RUNNER_TEMP/android-cmdline-tools"
+          mv "$RUNNER_TEMP/android-cmdline-tools/cmdline-tools" "$TOOLS_DIR/latest"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$TOOLS_DIR/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null || true
 
