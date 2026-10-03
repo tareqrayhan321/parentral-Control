@@ -6,6 +6,8 @@ import android.util.Log
 import com.example.core.apps.InstalledAppsProvider
 import com.example.core.database.repository.PolicyRepository
 import com.example.core.model.EnrollmentStatus
+import com.example.core.usage.UsageRepository
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import com.example.core.enrollment.EnrollmentManager
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,7 @@ class ChildSyncController(
     private val gateway: SyncGateway,
     private val repository: PolicyRepository,
     private val installedApps: InstalledAppsProvider,
+    private val usage: UsageRepository,
     private val enrollmentManager: EnrollmentManager,
     private val isDeviceOwner: () -> Boolean,
     private val enforcePolicy: suspend () -> Unit
@@ -81,6 +84,7 @@ class ChildSyncController(
         launch { watchPolicy(parentUid, childUid) }
         launch { watchLink(parentUid, childUid) }
         launch { heartbeatLoop(parentUid, childUid) }
+        launch { usageLoop(parentUid, childUid) }
         launch {
             gateway.uploadInventory(parentUid, childUid, installedApps.listLaunchableApps())
                 .onFailure { Log.w(TAG, "Inventory upload failed", it) }
@@ -121,6 +125,28 @@ class ChildSyncController(
         while (true) {
             sendHeartbeat(parentUid, childUid)
             delay(HEARTBEAT_INTERVAL_MS)
+        }
+    }
+
+    /** Uploads today's per-app minutes every few minutes, only when something changed. */
+    private suspend fun usageLoop(parentUid: String, childUid: String) {
+        var lastSent: Map<String, Int>? = null
+        var lastDate: String? = null
+        while (true) {
+            try {
+                val today = LocalDate.now().toString()
+                val minutes = usage.refreshTodayUsage().filterValues { it > 0 }
+                if (minutes.isNotEmpty() && (minutes != lastSent || today != lastDate)) {
+                    gateway.uploadUsage(parentUid, childUid, today, minutes)
+                        .onSuccess { lastSent = minutes; lastDate = today }
+                        .onFailure { Log.w(TAG, "Usage upload failed", it) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Usage refresh failed", e)
+            }
+            delay(USAGE_INTERVAL_MS)
         }
     }
 
@@ -165,5 +191,6 @@ class ChildSyncController(
         private const val KEY_ACKED = "acked_remote_version"
         private const val HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000L
         private const val RETRY_DELAY_MS = 30_000L
+        private const val USAGE_INTERVAL_MS = 5 * 60 * 1000L
     }
 }

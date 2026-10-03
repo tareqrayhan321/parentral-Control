@@ -7,6 +7,7 @@ import com.example.core.apps.AndroidInstalledAppsProvider
 import com.example.core.database.ChildDatabase
 import com.example.core.database.repository.RoomPolicyRepository
 import com.example.core.enrollment.DefaultEnrollmentManager
+import com.example.core.usage.AndroidUsageRepository
 
 /** One process-wide ChildSyncController, shared by the foreground service, boot receiver and UI. */
 object ChildSyncProvider {
@@ -22,12 +23,14 @@ object ChildSyncProvider {
     private fun build(app: Context): ChildSyncController {
         val repository = RoomPolicyRepository(ChildDatabase.getInstance(app))
         val deviceOwner = AndroidDeviceOwnerManager(app)
+        val usage = AndroidUsageRepository(app, repository)
         val enforcement = DefaultPolicyEnforcementManager(app, repository)
         return ChildSyncController(
             context = app,
             gateway = FirebaseSyncGateway(app),
             repository = repository,
             installedApps = AndroidInstalledAppsProvider(app),
+            usage = usage,
             enrollmentManager = DefaultEnrollmentManager(app, repository),
             isDeviceOwner = { deviceOwner.isDeviceOwner() },
             enforcePolicy = { enforcement.enforceCurrentPolicy() }

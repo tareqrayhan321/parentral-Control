@@ -20,10 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +85,14 @@ class AppBlockActivity : ComponentActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
                             .padding(innerPadding)
                     ) {
                         AppBlockContent(
@@ -165,6 +175,16 @@ private fun AppBlockContent(
         else -> "অভিভাবক কর্তৃক ব্লকড"
     }
 
+    // Time-based blocks (bedtime, daily limit) are calm amber; lockdown / parent block use coral.
+    val calm = blockReason == "BEDTIME_SCHEDULE" || blockReason == "LIMIT_EXCEEDED"
+    val accentContainer = if (calm) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer
+    val accent = if (calm) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.error
+    val blockIcon = when (blockReason) {
+        "BEDTIME_SCHEDULE" -> Icons.Default.Bedtime
+        "LIMIT_EXCEEDED" -> Icons.Default.Timer
+        else -> Icons.Default.Lock
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -182,13 +202,13 @@ private fun AppBlockContent(
                 modifier = Modifier
                     .size(96.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.errorContainer),
+                    .background(accentContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Block,
+                    imageVector = blockIcon,
                     contentDescription = "Blocked",
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = accent,
                     modifier = Modifier.size(54.dp)
                 )
             }
@@ -203,13 +223,13 @@ private fun AppBlockContent(
             )
 
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(12.dp),
+                color = accentContainer,
                 modifier = Modifier.padding(top = 10.dp)
             ) {
                 Text(
                     text = reasonTitleBn,
-                    color = MaterialTheme.colorScheme.error,
+                    color = accent,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -255,7 +275,7 @@ private fun AppBlockContent(
                     .fillMaxWidth()
                     .height(52.dp)
                     .testTag("return_home_button"),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(imageVector = Icons.Default.Home, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
@@ -270,7 +290,7 @@ private fun AppBlockContent(
                     .fillMaxWidth()
                     .height(48.dp)
                     .testTag("parent_unlock_pin_button"),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(imageVector = Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
