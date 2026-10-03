@@ -58,6 +58,36 @@ jobs:
             cp .env.example .env
           fi
 
+      - name: Restore and validate Firebase Android config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          : "${GOOGLE_SERVICES_JSON:?Missing repository secret GOOGLE_SERVICES_JSON}"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("app/google-services.json").read_text())
+          project_id = config.get("project_info", {}).get("project_id")
+          clients = config.get("client", [])
+          packages = {
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for client in clients
+          }
+          app_ids = {
+              client.get("client_info", {}).get("mobilesdk_app_id")
+              for client in clients
+          }
+          if project_id != "parental-control-3bda8":
+              raise SystemExit("Firebase config has an unexpected project_id")
+          if "com.aistudio.parentalcontrol.pxmz" not in packages:
+              raise SystemExit("Firebase config is missing the expected Android package")
+          if "1:985693497148:android:832d60d29f9f11d5e2a039" not in app_ids:
+              raise SystemExit("Firebase config is missing the expected Android app ID")
+          print("Firebase config validated (project, app ID, and package); contents redacted.")
+          PY
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
@@ -71,6 +101,10 @@ jobs:
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Remove temporary Firebase config
+        if: always()
+        run: rm -f app/google-services.json
 
       - name: Upload unit test reports
         if: failure()
