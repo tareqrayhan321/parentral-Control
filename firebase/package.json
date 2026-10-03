@@ -1,0 +1,11 @@
+{
+  "name": "parental-control-firebase-rules-tests",
+  "private": true,
+  "scripts": { "test": "firebase emulators:exec --only firestore \"mocha tests/*.test.js\"" },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.0",
+    "firebase": "^10.0.0",
+    "firebase-tools": "^13.0.0",
+    "mocha": "^10.0.0"
+  }
+}

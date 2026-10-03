@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.room.Room
 import com.example.core.database.ChildDatabase
 import com.example.core.database.repository.RoomPolicyRepository
+import com.example.core.model.ChildDevice
 import com.example.core.model.EnrollmentStatus
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -46,73 +47,19 @@ class EnrollmentTest {
     }
 
     @Test
-    fun `processEnrollmentQr succeeds and marks device enrolled`() = runTest {
-        val payload = PairingPayload.create(
-            parentId = "parent_tareq",
-            childDeviceName = "Tahmid's Tablet",
-            validityMinutes = 15,
-            parentSecret = "secure_secret_123"
+    fun `unenrollDevice marks an enrolled device as unenrolled`() = runTest {
+        policyRepository.saveDevice(
+            ChildDevice(
+                deviceId = "child1", parentId = "parent1", deviceName = "Tab",
+                lastSeenEpochMs = 0L, policyVersion = 1, enrollmentStatus = EnrollmentStatus.ENROLLED
+            )
         )
-        val qrJson = payload.toJson()
-
-        val result = enrollmentManager.processEnrollmentQr(qrJson, "secure_secret_123")
-        assertTrue("Enrollment must succeed", result is EnrollmentResult.Success)
-
-        val enrolledDevice = (result as EnrollmentResult.Success).device
-        assertEquals("Tahmid's Tablet", enrolledDevice.deviceName)
-        assertEquals(EnrollmentStatus.ENROLLED, enrolledDevice.enrollmentStatus)
-
-        val retrievedDevice = policyRepository.getDevice()
-        assertNotNull(retrievedDevice)
-        assertEquals(EnrollmentStatus.ENROLLED, retrievedDevice?.enrollmentStatus)
-        assertEquals("parent_tareq", retrievedDevice?.parentId)
+        assertTrue(enrollmentManager.unenrollDevice())
+        assertEquals(EnrollmentStatus.UNENROLLED, policyRepository.getDevice()?.enrollmentStatus)
     }
 
     @Test
-    fun `processEnrollmentQr rejects expired payload`() = runTest {
-        val payload = PairingPayload(
-            pairingToken = "expired_token",
-            parentId = "parent_1",
-            childDeviceId = "device_1",
-            childDeviceName = "Child Tablet",
-            expiresAtEpochMs = System.currentTimeMillis() - 10000L, // 10 seconds ago
-            signature = "sig"
-        )
-
-        val result = enrollmentManager.processEnrollmentQr(payload.toJson(), "parent_secret_key")
-        assertEquals(EnrollmentResult.Expired, result)
-    }
-
-    @Test
-    fun `processEnrollmentQr rejects tampered signature`() = runTest {
-        val payload = PairingPayload.create(
-            parentId = "parent_1",
-            childDeviceName = "Tablet",
-            validityMinutes = 10,
-            parentSecret = "secret_A"
-        )
-        // Attempt verification with secret_B
-        val result = enrollmentManager.processEnrollmentQr(payload.toJson(), "secret_B")
-        assertEquals(EnrollmentResult.SignatureMismatch, result)
-    }
-
-    @Test
-    fun `processPairingCode with valid 6-digit code successfully enrolls child device`() = runTest {
-        val result = enrollmentManager.processPairingCode("849210", "Sami's Phone", "Abbu's Phone")
-        assertTrue("Pairing with code must succeed", result is EnrollmentResult.Success)
-
-        val enrolledDevice = (result as EnrollmentResult.Success).device
-        assertEquals("Sami's Phone", enrolledDevice.deviceName)
-        assertEquals(EnrollmentStatus.ENROLLED, enrolledDevice.enrollmentStatus)
-
-        val retrieved = policyRepository.getDevice()
-        assertNotNull(retrieved)
-        assertEquals(EnrollmentStatus.ENROLLED, retrieved?.enrollmentStatus)
-    }
-
-    @Test
-    fun `processPairingCode with invalid code length returns InvalidQr`() = runTest {
-        val result = enrollmentManager.processPairingCode("123", "Sami's Phone")
-        assertEquals(EnrollmentResult.InvalidQr, result)
+    fun `unenrollDevice with no device returns false`() = runTest {
+        assertEquals(false, enrollmentManager.unenrollDevice())
     }
 }

@@ -286,7 +286,7 @@ fun ChildDashboardScreen(
                                         color = StatusAllowed.copy(alpha = 0.2f)
                                     ) {
                                         Text(
-                                            text = "ONLINE",
+                                            text = "LINKED",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = StatusAllowed,
@@ -295,7 +295,7 @@ fun ChildDashboardScreen(
                                     }
                                 }
                                 Text(
-                                    text = "অভিভাবক দ্বারা দূর থেকে সুরক্ষিত ও সিঙ্কড",
+                                    text = "অভিভাবকের সাথে যুক্ত",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

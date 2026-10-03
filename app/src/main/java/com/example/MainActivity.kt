@@ -57,7 +57,8 @@ class MainActivity : ComponentActivity() {
                 val qrRemainingSeconds by viewModel.qrRemainingSeconds.collectAsState()
                 val qrPayloadJson by viewModel.qrPayloadJson.collectAsState()
                 val audits by viewModel.recentAudits.collectAsState()
-                val pairingCode by viewModel.pairingCode.collectAsState()
+                val parentAccountLabel by viewModel.parentAccountLabel.collectAsState()
+                val childStatusLabel by viewModel.childStatusLabel.collectAsState()
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
                 val connectedParentName by viewModel.connectedParentName.collectAsState()
                 val showConnectDialog by viewModel.showConnectDialog.collectAsState()
@@ -129,7 +130,10 @@ class MainActivity : ComponentActivity() {
                                     qrBitmap = qrBitmap,
                                     qrRemainingSeconds = qrRemainingSeconds,
                                     audits = audits,
-                                    pairingCode = pairingCode,
+                                    parentAccountLabel = parentAccountLabel,
+                                    childStatusLabel = childStatusLabel,
+                                    onSignIn = { viewModel.signInParent(this@MainActivity) },
+                                    onSignOut = { viewModel.signOutParent() },
                                     onSelectTab = { viewModel.selectParentTab(it) },
                                     onSwitchToChildMode = { viewModel.switchToChildMode() },
                                     onToggleSupervision = { viewModel.toggleSupervision(it) },
@@ -154,7 +158,6 @@ class MainActivity : ComponentActivity() {
                                     onAddSchedule = { viewModel.addOrUpdateSchedule(it) },
                                     onDeleteSchedule = { viewModel.deleteSchedule(it) },
                                     onRegenerateQr = { viewModel.generatePairingQr() },
-                                    onSimulatePairing = { viewModel.simulateEnrollmentWithQr(qrPayloadJson) },
                                     onPushSync = { viewModel.pushSyncToChild() },
                                     onUnpairChild = { viewModel.unpairChildDevice() },
                                     onSwitchRoleRequested = { viewModel.openRoleSelection() },
@@ -166,11 +169,7 @@ class MainActivity : ComponentActivity() {
                         // Connect to Parent Phone Dialog on Child Device
                         if (showConnectDialog) {
                             ConnectToParentDialog(
-                                parentGeneratedCode = pairingCode,
                                 onDismiss = { viewModel.closeConnectDialog() },
-                                onConnectWithCode = { code, childName, parentName ->
-                                    viewModel.connectChildWithCode(code, childName, parentName)
-                                },
                                 onConnectWithQr = { qr ->
                                     viewModel.connectChildWithQr(qr)
                                 }

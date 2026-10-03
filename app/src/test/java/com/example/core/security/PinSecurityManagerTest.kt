@@ -11,6 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.util.Arrays
+import javax.crypto.spec.SecretKeySpec
 
 @RunWith(RobolectricTestRunner::class)
 class PinSecurityManagerTest {
@@ -20,7 +21,10 @@ class PinSecurityManagerTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        pinManager = AndroidPinSecurityManager(context)
+        pinManager = AndroidPinSecurityManager(
+            context,
+            testKeyOverride = SecretKeySpec(ByteArray(32) { (it * 7 + 3).toByte() }, "AES")
+        )
         pinManager.clearPinForTesting()
     }
 

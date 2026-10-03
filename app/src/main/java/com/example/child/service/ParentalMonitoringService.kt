@@ -35,6 +35,8 @@ class ParentalMonitoringService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
         startPeriodicEnforcement()
+        // Policy pull, heartbeat and inventory upload (no-op if not paired or Firebase not configured)
+        com.example.core.sync.ChildSyncProvider.get(applicationContext).start()
         Log.i(TAG, "ParentalMonitoringService started as foreground service.")
     }
 

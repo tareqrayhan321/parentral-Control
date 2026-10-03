@@ -138,12 +138,14 @@ fun ParentDashboardScreen(
     onToggleSchedule: (String, Boolean) -> Unit,
     onAddSchedule: (Schedule) -> Unit,
     onDeleteSchedule: (String) -> Unit,
-    pairingCode: String = "849210",
+    parentAccountLabel: String? = null,
+    childStatusLabel: String = "",
+    onSignIn: () -> Unit = {},
+    onSignOut: () -> Unit = {},
     onPushSync: () -> Unit = {},
     onUnpairChild: () -> Unit = {},
     onSwitchRoleRequested: () -> Unit = {},
     onRegenerateQr: () -> Unit,
-    onSimulatePairing: () -> Unit,
     onChangePinRequested: () -> Unit
 ) {
     var showAddScheduleDialog by remember { mutableStateOf(false) }
@@ -281,12 +283,14 @@ fun ParentDashboardScreen(
                     onDeleteSchedule = onDeleteSchedule
                 )
                 ParentTab.PAIRING -> PairingTabContent(
-                    pairingCode = pairingCode,
+                    parentAccountLabel = parentAccountLabel,
+                    childStatusLabel = childStatusLabel,
+                    onSignIn = onSignIn,
+                    onSignOut = onSignOut,
                     deviceInfo = deviceInfo,
                     qrBitmap = qrBitmap,
                     qrRemainingSeconds = qrRemainingSeconds,
                     onRegenerateQr = onRegenerateQr,
-                    onSimulatePairing = onSimulatePairing,
                     onPushSync = onPushSync,
                     onUnpairChild = onUnpairChild
                 )
@@ -1259,18 +1263,19 @@ private fun SchedulesTabContent(
 
 @Composable
 private fun PairingTabContent(
-    pairingCode: String,
+    parentAccountLabel: String?,
+    childStatusLabel: String,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
     deviceInfo: ChildDevice?,
     qrBitmap: Bitmap?,
     qrRemainingSeconds: Int,
     onRegenerateQr: () -> Unit,
-    onSimulatePairing: () -> Unit,
     onPushSync: () -> Unit,
     onUnpairChild: () -> Unit
 ) {
     val minutes = qrRemainingSeconds / 60
     val seconds = qrRemainingSeconds % 60
-    val formattedCode = if (pairingCode.length == 6) "${pairingCode.take(3)} - ${pairingCode.takeLast(3)}" else pairingCode
 
     LazyColumn(
         modifier = Modifier
@@ -1286,14 +1291,14 @@ private fun PairingTabContent(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "সন্তানের ফোনের সাথে এই ফোনটি যুক্ত করার জন্য নিচের ৬-সংখ্যার কোড অথবা QR কোডটি ব্যবহার করুন।",
+                text = "প্রথমে Google দিয়ে সাইন-ইন করুন, তারপর সন্তানের ফোন থেকে নিচের QR কোডটি স্ক্যান করুন।",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
         }
 
-        // 6-Digit Pairing Code Hero Card
+        // Parent Google account card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1309,40 +1314,41 @@ private fun PairingTabContent(
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                    if (parentAccountLabel == null) {
                         Text(
-                            text = "CHILD PAIRING CODE (৬-সংখ্যার কোড)",
+                            text = "অভিভাবক অ্যাকাউন্ট (Parent Account)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = formattedCode,
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            letterSpacing = 6.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "সন্তানের ফোন যুক্ত করতে Google অ্যাকাউন্টে সাইন-ইন করা প্রয়োজন।",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onSignIn,
+                            modifier = Modifier.testTag("google_sign_in_button")
+                        ) {
+                            Text("Sign in with Google")
+                        }
+                    } else {
+                        Text(
+                            text = "Signed in as",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = parentAccountLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "সন্তানের ফোনে এই কোডটি লিখলেই ডিভাইস দুটি যুক্ত হয়ে যাবে।",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(onClick = onSignOut) { Text("Sign out", fontSize = 12.sp) }
+                    }
                 }
             }
         }
@@ -1390,9 +1396,9 @@ private fun PairingTabContent(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = if (deviceInfo != null) "🟢 Online • Supervised & Synced" else "Waiting for child connection...",
+                                    text = childStatusLabel,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (deviceInfo != null) StatusAllowed else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1485,16 +1491,6 @@ private fun PairingTabContent(
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Regenerate Code & QR")
-                }
-                if (deviceInfo == null) {
-                    Button(
-                        onClick = onSimulatePairing,
-                        modifier = Modifier.testTag("test_pairing_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.Check, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Simulate Child Connect")
-                    }
                 }
             }
         }

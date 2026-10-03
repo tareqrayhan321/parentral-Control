@@ -31,6 +31,11 @@ class BootReceiver : BroadcastReceiver() {
                     val enforcementManager = com.example.child.enforcement.DefaultPolicyEnforcementManager(context)
                     enforcementManager.initializeDeviceEnforcement()
 
+                    // Resume monitoring + backend sync after reboot
+                    if (repository.getDevice() != null) {
+                        com.example.child.protection.DeviceProtectionManager.startProtectionService(context)
+                    }
+
                     Log.i(TAG, "Boot initialization and policy enforcement complete.")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error handling boot completed", e)

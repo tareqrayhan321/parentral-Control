@@ -147,7 +147,6 @@ class RoomPolicyRepository(
                     appVersion = "1.0",
                     lastSeenEpochMs = it.lastSynchronizedAt,
                     policyVersion = it.policyVersion,
-                    isDeviceOwner = true,
                     enrollmentStatus = status
                 )
             }
@@ -169,7 +168,6 @@ class RoomPolicyRepository(
             appVersion = "1.0",
             lastSeenEpochMs = entity.lastSynchronizedAt,
             policyVersion = entity.policyVersion,
-            isDeviceOwner = true,
             enrollmentStatus = status
         )
     }

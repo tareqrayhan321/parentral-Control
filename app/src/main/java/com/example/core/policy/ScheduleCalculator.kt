@@ -18,7 +18,8 @@ object ScheduleCalculator {
      * Calculates the nearest upcoming transition (start or end) among the given schedules
      * starting strictly after [fromDateTime].
      *
-     * Looks up to 8 days in the future to find the next active transition.
+     * Scans from yesterday (to catch the end of a midnight-crossing schedule that began
+     * yesterday) up to 7 days in the future.
      * Returns null if no schedules are enabled or have active days.
      */
     fun findNextTransition(
@@ -31,8 +32,9 @@ object ScheduleCalculator {
         val zone = fromDateTime.zone
         var nearestTransition: ZonedDateTime? = null
 
-        // Examine the next 8 days (covers full weekly cycle + 1 overlap day)
-        for (dayOffset in 0..7) {
+        // Start at yesterday: a schedule such as 22:00 -> 07:00 that started yesterday
+        // ends today at 07:00, and that end transition must not be missed.
+        for (dayOffset in -1..7) {
             val targetDate = fromDateTime.toLocalDate().plusDays(dayOffset.toLong())
 
             for (schedule in enabledSchedules) {

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import com.example.core.database.dao.AppPolicyDao
 import com.example.core.database.dao.ChildDeviceDao
 import com.example.core.database.dao.DailyUsageDao
@@ -37,6 +38,13 @@ abstract class ChildDatabase : RoomDatabase() {
     companion object {
         private const val DATABASE_NAME = "parental_control_child.db"
 
+        /**
+         * Schema migrations. Add one entry per version bump; never use
+         * fallbackToDestructiveMigration(), which would wipe policy, schedules,
+         * enrollment and usage data on upgrade.
+         */
+        val MIGRATIONS: Array<Migration> = emptyArray()
+
         @Volatile
         private var INSTANCE: ChildDatabase? = null
 
@@ -47,7 +55,10 @@ abstract class ChildDatabase : RoomDatabase() {
                     ChildDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(*MIGRATIONS)
+                    // Only the old dev schema (v1) may be recreated. Any future version bump without
+                    // a Migration now fails loudly instead of silently wiping data.
+                    .fallbackToDestructiveMigrationFrom(1)
                     .build()
                     .also { INSTANCE = it }
             }

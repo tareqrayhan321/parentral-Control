@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
@@ -16,8 +17,8 @@ import com.example.core.database.repository.PolicyRepository
 import com.example.core.database.repository.RoomPolicyRepository
 import com.example.core.enrollment.DefaultEnrollmentManager
 import com.example.core.enrollment.EnrollmentManager
-import com.example.core.enrollment.PairingPayload
 import com.example.core.enrollment.QrCodeGenerator
+import com.example.core.apps.InstalledApp
 import com.example.core.model.AppPolicy
 import com.example.core.model.ChildDevice
 import com.example.core.model.EnrollmentStatus
@@ -28,13 +29,29 @@ import com.example.core.model.TimeOfDay
 import com.example.core.security.AndroidPinSecurityManager
 import com.example.core.security.PinSecurityManager
 import com.example.core.security.PinVerificationResult
+import com.example.core.sync.ChildStatusFormatter
+import com.example.child.protection.DeviceProtectionManager
+import com.example.core.sync.ChildSyncController
+import com.example.core.sync.ChildSyncProvider
+import com.example.core.sync.FirebaseSyncGateway
+import com.example.core.sync.PairingQr
+import com.example.core.sync.RemoteHeartbeat
+import com.example.core.sync.SyncGateway
 import com.example.core.usage.AndroidUsageRepository
 import com.example.core.usage.UsageRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -71,7 +88,10 @@ class MainViewModel @JvmOverloads constructor(
     private val pinSecurityManager: PinSecurityManager = AndroidPinSecurityManager(application),
     private val deviceOwnerManager: DeviceOwnerManager = AndroidDeviceOwnerManager(application),
     private val enforcementManager: PolicyEnforcementManager = DefaultPolicyEnforcementManager(application, policyRepository, usageRepository, deviceOwnerManager),
-    private val enrollmentManager: EnrollmentManager = DefaultEnrollmentManager(application, policyRepository)
+    private val enrollmentManager: EnrollmentManager = DefaultEnrollmentManager(application, policyRepository),
+    private val installedAppsProvider: com.example.core.apps.InstalledAppsProvider =
+        com.example.core.apps.AndroidInstalledAppsProvider(application),
+    private val syncGateway: SyncGateway = FirebaseSyncGateway(application)
 ) : AndroidViewModel(application) {
 
     private val rolePrefs = application.getSharedPreferences("device_role_prefs", Context.MODE_PRIVATE)
@@ -85,8 +105,6 @@ class MainViewModel @JvmOverloads constructor(
     )
     val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
 
-    private val _pairingCode = MutableStateFlow("849210")
-    val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
 
     private val _isChildConnectedToParent = MutableStateFlow(false)
     val isChildConnectedToParent: StateFlow<Boolean> = _isChildConnectedToParent.asStateFlow()
@@ -115,7 +133,7 @@ class MainViewModel @JvmOverloads constructor(
     private val _qrPayloadJson = MutableStateFlow("")
     val qrPayloadJson: StateFlow<String> = _qrPayloadJson.asStateFlow()
 
-    private val _qrRemainingSeconds = MutableStateFlow(900)
+    private val _qrRemainingSeconds = MutableStateFlow(0)
     val qrRemainingSeconds: StateFlow<Int> = _qrRemainingSeconds.asStateFlow()
 
     private val _instantLockdown = MutableStateFlow(false)
@@ -166,10 +184,50 @@ class MainViewModel @JvmOverloads constructor(
     private var countdownJob: Job? = null
     private var qrCountdownJob: Job? = null
 
+    // ---- backend sync state ----
+    private val _childHeartbeat = MutableStateFlow<RemoteHeartbeat?>(null)
+
+    private val _parentAccountLabel = MutableStateFlow(syncGateway.currentParent()?.let { it.email ?: it.uid })
+    val parentAccountLabel: StateFlow<String?> = _parentAccountLabel.asStateFlow()
+
+    private val clock = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(60_000L)
+        }
+    }
+
+    val childStatusLabel: StateFlow<String> = combine(_deviceInfo, _childHeartbeat, clock) { device, hb, now ->
+        ChildStatusFormatter.format(device != null, hb, now)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Waiting for child connection...")
+
+    private var parentSyncJob: Job? = null
+
+    private val childSync: ChildSyncController = ChildSyncProvider.get(application)
+
+    init {
+        viewModelScope.launch {
+            childSync.linkLost.collect {
+                _isChildConnectedToParent.value = false
+                _deviceInfo.value = null
+                _statusMessage.value = "The parent unlinked this device."
+            }
+        }
+    }
+
+    /** Child side: keep the foreground service (which hosts sync) running while paired. */
+    private fun ensureChildServiceRunning() {
+        DeviceProtectionManager.startProtectionService(getApplication())
+        childSync.start()
+    }
+
+    private fun isParentRole(): Boolean = rolePrefs.getString("device_role", null) == "PARENT"
+
     init {
         viewModelScope.launch {
             try {
                 loadInitialData()
+                startSync()
                 enforcementManager.initializeDeviceEnforcement()
                 refreshUsage()
             } catch (e: Exception) {
@@ -186,77 +244,169 @@ class MainViewModel @JvmOverloads constructor(
             if (currentDevice != null && currentDevice.enrollmentStatus == EnrollmentStatus.ENROLLED) {
                 _connectedParentName.value = "Parent's Phone (${currentDevice.parentId})"
             }
-            _isDeviceOwner.value = deviceOwnerManager.isDeviceOwner()
-            _isSupervised.value = deviceOwnerManager.isSupervisionActive()
-            _isCameraBlocked.value = deviceOwnerManager.isCameraDisabled()
-            _isInstallBlocked.value = deviceOwnerManager.isAppInstallBlocked()
-            _isMandatoryDnsEnforced.value = deviceOwnerManager.isMandatoryDnsEnforced()
-            _enforcedDnsHost.value = deviceOwnerManager.getEnforcedDnsHost()
+            refreshDeviceOwnerFlags()
 
-            // If no apps exist in initial policy, seed common popular apps with default profiles
-            val currentPolicy = policyRepository.getCurrentPolicy()
-            if (currentPolicy.apps.isEmpty()) {
-                seedDefaultApps()
-            }
+            // Populate the policy with the apps that are really installed on this device
+            syncInstalledApps()
 
-            // Generate initial pairing QR
-            generatePairingQr()
+            // Parent phones create a pairing QR only once signed in
+            if (isParentRole() && syncGateway.currentParent() != null) generatePairingQr()
         } catch (e: Exception) {
             Log.e("MainViewModel", "Error loading initial data", e)
         }
     }
 
-    private suspend fun seedDefaultApps() {
-        val sampleApps = listOf(
-            AppPolicy("com.google.android.youtube", "YouTube", RestrictionMode.LIMITED, 45),
-            AppPolicy("com.zhiliaoapp.musically", "TikTok", RestrictionMode.BLOCKED),
-            AppPolicy("com.instagram.android", "Instagram", RestrictionMode.LIMITED, 30),
-            AppPolicy("com.facebook.katana", "Facebook", RestrictionMode.BLOCKED),
-            AppPolicy("com.android.chrome", "Chrome Browser", RestrictionMode.ALLOWED),
-            AppPolicy("com.google.android.apps.docs", "Google Docs", RestrictionMode.ALLOWED),
-            AppPolicy("com.duolingo", "Duolingo", RestrictionMode.ALLOWED),
-            AppPolicy("com.roblox.client", "Roblox", RestrictionMode.LIMITED, 60),
-            AppPolicy("com.mojang.minecraftpe", "Minecraft", RestrictionMode.LIMITED, 60)
-        )
-        val initialSchedules = listOf(
-            Schedule(
-                id = "bedtime",
-                name = "Bedtime Lockdown",
-                startTime = TimeOfDay(21, 0),
-                endTime = TimeOfDay(7, 0),
-                activeDays = DayOfWeek.values().toSet(),
-                enabled = true
-            ),
-            Schedule(
-                id = "homework",
-                name = "Study Hours",
-                startTime = TimeOfDay(16, 0),
-                endTime = TimeOfDay(18, 0),
-                activeDays = setOf(
-                    DayOfWeek.SUNDAY,
-                    DayOfWeek.MONDAY,
-                    DayOfWeek.TUESDAY,
-                    DayOfWeek.WEDNESDAY,
-                    DayOfWeek.THURSDAY
-                ),
-                enabled = true
+    /** Re-reads live Device Owner / restriction state from the system. */
+    private fun refreshDeviceOwnerFlags() {
+        _isDeviceOwner.value = deviceOwnerManager.isDeviceOwner()
+        _isSupervised.value = deviceOwnerManager.isSupervisionActive()
+        _isCameraBlocked.value = deviceOwnerManager.isCameraDisabled()
+        _isInstallBlocked.value = deviceOwnerManager.isAppInstallBlocked()
+        _isMandatoryDnsEnforced.value = deviceOwnerManager.isMandatoryDnsEnforced()
+        _enforcedDnsHost.value = deviceOwnerManager.getEnforcedDnsHost()
+    }
+
+    /**
+     * Adds every launchable installed app that has no policy yet, as ALLOWED.
+     * Existing policies are never modified or removed. The policy version is bumped
+     * only when something was actually added.
+     */
+    private suspend fun syncInstalledApps() {
+        // A parent phone's policy describes the CHILD's apps (from the child's inventory),
+        // never the parent's own installed apps.
+        if (isParentRole()) return
+        mergeNewApps(installedAppsProvider.listLaunchableApps())
+    }
+
+    private suspend fun mergeNewApps(candidates: List<InstalledApp>) {
+        val currentPolicy = policyRepository.getCurrentPolicy()
+        val newApps = candidates
+            .filter { it.packageName !in currentPolicy.apps }
+            .map { AppPolicy(it.packageName, it.displayName, RestrictionMode.ALLOWED) }
+        if (newApps.isEmpty()) return
+
+        val isFirstRun = currentPolicy.apps.isEmpty() && currentPolicy.schedules.isEmpty()
+        val schedules = if (isFirstRun) defaultSchedules() else currentPolicy.schedules.values.toList()
+
+        policyRepository.applyNewPolicyAtomic(
+            Policy(
+                version = currentPolicy.version + 1,
+                updatedAtEpochMs = System.currentTimeMillis(),
+                apps = currentPolicy.apps + newApps.associateBy { it.packageName },
+                schedules = schedules.associateBy { it.id }
             )
         )
+    }
 
-        val newPolicy = Policy(
-            version = 1,
-            updatedAtEpochMs = System.currentTimeMillis(),
-            apps = sampleApps.associateBy { it.packageName },
-            schedules = initialSchedules.associateBy { it.id }
+    private fun defaultSchedules(): List<Schedule> = listOf(
+        Schedule(
+            id = "bedtime",
+            name = "Bedtime Lockdown",
+            startTime = TimeOfDay(21, 0),
+            endTime = TimeOfDay(7, 0),
+            activeDays = DayOfWeek.values().toSet(),
+            enabled = false
+        ),
+        Schedule(
+            id = "homework",
+            name = "Study Hours",
+            startTime = TimeOfDay(16, 0),
+            endTime = TimeOfDay(18, 0),
+            activeDays = setOf(
+                DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY,
+                DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY
+            ),
+            enabled = false
         )
-        policyRepository.applyNewPolicyAtomic(newPolicy)
+    )
 
-        // Seed some sample usage for realism
-        val todayStr = LocalDate.now().toString()
-        policyRepository.recordTodayUsage("com.google.android.youtube", todayStr, 25)
-        policyRepository.recordTodayUsage("com.instagram.android", todayStr, 32) // Exceeded!
-        policyRepository.recordTodayUsage("com.duolingo", todayStr, 15)
-        policyRepository.recordTodayUsage("com.android.chrome", todayStr, 10)
+    private fun startSync() {
+        if (!syncGateway.isAvailable) return
+        if (isParentRole()) startParentObservers() else if (_deviceInfo.value != null) ensureChildServiceRunning()
+    }
+
+    private suspend fun retrying(block: suspend () -> Unit) {
+        while (true) {
+            try {
+                block()
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("MainViewModel", "Sync listener error, retrying", e)
+                delay(30_000L)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun startParentObservers() {
+        parentSyncJob?.cancel()
+        val parent = syncGateway.currentParent() ?: return
+        parentSyncJob = viewModelScope.launch {
+            launch {
+                retrying {
+                    syncGateway.observeDevices().collect { list ->
+                        val d = list.firstOrNull()
+                        _deviceInfo.value = d?.let {
+                            ChildDevice(
+                                deviceId = it.deviceId,
+                                parentId = parent.uid,
+                                deviceName = it.deviceName,
+                                appVersion = it.appVersion,
+                                lastSeenEpochMs = 0L,
+                                policyVersion = 0,
+                                enrollmentStatus = EnrollmentStatus.ENROLLED
+                            )
+                        }
+                        _isChildConnectedToParent.value = d != null
+                    }
+                }
+            }
+            launch {
+                retrying {
+                    _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
+                        .flatMapLatest { id -> if (id == null) flowOf(null) else syncGateway.observeHeartbeat(id) }
+                        .collect { _childHeartbeat.value = it }
+                }
+            }
+            launch {
+                retrying {
+                    _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
+                        .flatMapLatest { id -> if (id == null) flowOf(null) else syncGateway.observeInventory(id) }
+                        .collect { inv -> if (inv != null) mergeNewApps(inv.apps) }
+                }
+            }
+        }
+    }
+
+    fun signInParent(activity: Activity) {
+        viewModelScope.launch {
+            syncGateway.signInParentWithGoogle(activity)
+                .onSuccess { account ->
+                    _parentAccountLabel.value = account.email ?: account.uid
+                    _statusMessage.value = "Signed in as ${account.email ?: account.uid}."
+                    startParentObservers()
+                    generatePairingQr()
+                }
+                .onFailure { e ->
+                    Log.e("MainViewModel", "Google sign-in failed", e)
+                    _statusMessage.value = "Google sign-in failed: ${e.message}"
+                }
+        }
+    }
+
+    fun signOutParent() {
+        viewModelScope.launch {
+            parentSyncJob?.cancel()
+            syncGateway.signOut()
+            _parentAccountLabel.value = null
+            _deviceInfo.value = null
+            _childHeartbeat.value = null
+            _qrBitmap.value = null
+            _qrPayloadJson.value = ""
+            _statusMessage.value = "Signed out."
+        }
     }
 
     fun isPinConfigured(): Boolean = pinSecurityManager.isPinConfigured()
@@ -405,6 +555,10 @@ class MainViewModel @JvmOverloads constructor(
     }
 
     fun addOrUpdateSchedule(schedule: Schedule) {
+        if (schedule.startTime == schedule.endTime) {
+            _statusMessage.value = "Start and end time cannot be the same."
+            return
+        }
         viewModelScope.launch {
             val currentPolicy = policyRepository.getCurrentPolicy()
             val updatedSchedules = currentPolicy.schedules.toMutableMap()
@@ -576,31 +730,45 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
-    fun generatePairingQr() {
-        try {
-            val payload = PairingPayload.create(
-                parentId = "parent_tareq",
-                childDeviceName = "Child Phone",
-                parentName = "Parent's Phone",
-                validityMinutes = 15
-            )
-            _pairingCode.value = payload.pairingCode
-            val json = payload.toJson()
-            _qrPayloadJson.value = json
-            _qrBitmap.value = QrCodeGenerator.generateQrBitmap(json, 512)
-            _qrRemainingSeconds.value = 900
+    /** Stable random identity of this parent device, created once and persisted. */
+    private fun getOrCreateParentId(): String {
+        rolePrefs.getString("parent_id", null)?.let { return it }
+        val id = "parent_" + java.util.UUID.randomUUID().toString().take(12)
+        rolePrefs.edit().putString("parent_id", id).apply()
+        return id
+    }
 
-            qrCountdownJob?.cancel()
-            qrCountdownJob = viewModelScope.launch {
-                var rem = 900
-                while (rem > 0) {
-                    delay(1000L)
-                    rem--
-                    _qrRemainingSeconds.value = rem
-                }
+    fun generatePairingQr() {
+        viewModelScope.launch {
+            if (!syncGateway.isAvailable) {
+                _statusMessage.value = "Firebase is not configured in this build (google-services.json missing)."
+                return@launch
             }
-        } catch (e: Exception) {
-            Log.e("MainViewModel", "Error generating pairing QR", e)
+            syncGateway.createPairingToken(validityMinutes = PAIRING_VALIDITY_MINUTES)
+                .onSuccess { token ->
+                    val json = PairingQr(token.token, token.parentUid, "Parent's Phone").toJson()
+                    _qrPayloadJson.value = json
+                    _qrBitmap.value = QrCodeGenerator.generateQrBitmap(json, 512)
+                    val total = (PAIRING_VALIDITY_MINUTES * 60).toInt()
+                    _qrRemainingSeconds.value = total
+
+                    qrCountdownJob?.cancel()
+                    qrCountdownJob = viewModelScope.launch {
+                        var rem = total
+                        while (rem > 0) {
+                            delay(1000L)
+                            rem--
+                            _qrRemainingSeconds.value = rem
+                        }
+                        _qrBitmap.value = null
+                        _qrPayloadJson.value = ""
+                    }
+                }
+                .onFailure { e ->
+                    _qrBitmap.value = null
+                    _qrPayloadJson.value = ""
+                    _statusMessage.value = e.message ?: "Could not create pairing QR."
+                }
         }
     }
 
@@ -609,7 +777,14 @@ class MainViewModel @JvmOverloads constructor(
         _appMode.value = role
         if (role == AppMode.PARENT) {
             _parentTab.value = ParentTab.DASHBOARD
-            generatePairingQr()
+            childSync.stop()
+            if (syncGateway.currentParent() != null) {
+                startParentObservers()
+                generatePairingQr()
+            }
+        } else if (role == AppMode.CHILD) {
+            parentSyncJob?.cancel()
+            if (syncGateway.isAvailable && _deviceInfo.value != null) ensureChildServiceRunning()
         }
         _statusMessage.value = if (role == AppMode.PARENT) "Configured as Parent Device" else "Configured as Child Device"
     }
@@ -634,87 +809,90 @@ class MainViewModel @JvmOverloads constructor(
         _showProtectionDialog.value = false
     }
 
-    fun connectChildWithCode(code: String, childName: String, parentName: String) {
-        viewModelScope.launch {
-            val result = enrollmentManager.processPairingCode(code, childName, parentName)
-            when (result) {
-                is com.example.core.enrollment.EnrollmentResult.Success -> {
-                    _deviceInfo.value = result.device
-                    _isChildConnectedToParent.value = true
-                    _connectedParentName.value = parentName.ifBlank { "Parent's Phone" }
-                    _showConnectDialog.value = false
-                    _statusMessage.value = "Successfully connected to $parentName!"
-                }
-                else -> {
-                    _statusMessage.value = "Connection failed. Please check the 6-digit code."
-                }
-            }
-        }
-    }
-
     fun connectChildWithQr(qrContent: String) {
         viewModelScope.launch {
-            val result = enrollmentManager.processEnrollmentQr(qrContent)
-            when (result) {
-                is com.example.core.enrollment.EnrollmentResult.Success -> {
-                    _deviceInfo.value = result.device
-                    _isChildConnectedToParent.value = true
-                    val payload = PairingPayload.fromJson(qrContent)
-                    _connectedParentName.value = payload?.parentName ?: "Parent's Phone"
-                    _showConnectDialog.value = false
-                    _statusMessage.value = "Successfully paired via QR code!"
-                }
-                else -> {
-                    _statusMessage.value = "Invalid or expired QR code."
-                }
+            val qr = PairingQr.fromJson(qrContent)
+            if (qr == null) {
+                _statusMessage.value = "Invalid QR code."
+                return@launch
             }
+            if (!syncGateway.isAvailable) {
+                _statusMessage.value = "Firebase is not configured in this build."
+                return@launch
+            }
+            val name = android.os.Build.MODEL?.takeIf { it.isNotBlank() } ?: "Child Phone"
+            val version = try {
+                getApplication<Application>().packageManager
+                    .getPackageInfo(getApplication<Application>().packageName, 0).versionName ?: "?"
+            } catch (e: Exception) { "?" }
+
+            syncGateway.claimPairing(qr, name, version)
+                .onSuccess { claim ->
+                    val device = ChildDevice(
+                        deviceId = claim.childUid,
+                        parentId = claim.parentUid,
+                        deviceName = name,
+                        appVersion = version,
+                        lastSeenEpochMs = System.currentTimeMillis(),
+                        policyVersion = 0,
+                        enrollmentStatus = EnrollmentStatus.ENROLLED
+                    )
+                    policyRepository.saveDevice(device)
+                    policyRepository.logSyncAudit("DEVICE_PAIRED", 0, "Paired with parent ${claim.parentUid}")
+                    _deviceInfo.value = device
+                    _isChildConnectedToParent.value = true
+                    _connectedParentName.value = qr.parentName
+                    _showConnectDialog.value = false
+                    _statusMessage.value = "Successfully paired with parent."
+                    ensureChildServiceRunning()
+                }
+                .onFailure { e ->
+                    Log.e("MainViewModel", "Pairing failed", e)
+                    _statusMessage.value = "Pairing failed: ${e.message}"
+                }
         }
     }
 
     fun unpairChildDevice() {
         viewModelScope.launch {
+            if (isParentRole()) {
+                val id = _deviceInfo.value?.deviceId ?: return@launch
+                syncGateway.unlinkDevice(id)
+                    .onSuccess { _statusMessage.value = "Child device unlinked." }
+                    .onFailure { _statusMessage.value = "Unlink failed: ${it.message}" }
+                return@launch
+            }
+            childSync.stop()
             enrollmentManager.unenrollDevice()
             _isChildConnectedToParent.value = false
             _deviceInfo.value = null
-            _statusMessage.value = "Device disconnected from parent."
+            _statusMessage.value = "Device disconnected from parent. (The parent phone still lists it until the parent unlinks it.)"
         }
     }
 
     fun pushSyncToChild() {
-        viewModelScope.launch {
-            val currentPolicy = policyRepository.getCurrentPolicy()
-            policyRepository.logSyncAudit(
-                event = "MANUAL_POLICY_PUSH",
-                version = currentPolicy.version,
-                details = "Parent manually pushed all latest restrictions, app limits, and DNS rules to child"
-            )
-            _statusMessage.value = "Policies successfully synchronized with child device!"
+        val device = _deviceInfo.value
+        if (device == null) {
+            _statusMessage.value = "No child device is linked."
+            return
         }
-    }
-
-    fun simulateEnrollmentWithQr(qrContent: String) {
         viewModelScope.launch {
-            val result = enrollmentManager.processEnrollmentQr(qrContent)
-            when (result) {
-                is com.example.core.enrollment.EnrollmentResult.Success -> {
-                    _deviceInfo.value = result.device
-                    _statusMessage.value = "Device paired successfully as '${result.device.deviceName}'!"
+            val local = policyRepository.getCurrentPolicy()
+            syncGateway.pushPolicy(device.deviceId, local)
+                .onSuccess { remoteVersion ->
+                    policyRepository.logSyncAudit("POLICY_PUSHED", remoteVersion, "Pushed policy as remote v$remoteVersion")
+                    _statusMessage.value = "Rules sent (v$remoteVersion). The child applies them when it is online."
                 }
-                is com.example.core.enrollment.EnrollmentResult.Expired -> {
-                    _statusMessage.value = "Pairing QR has expired. Please regenerate."
+                .onFailure { e ->
+                    Log.e("MainViewModel", "Push failed", e)
+                    _statusMessage.value = "Could not send rules: ${e.message}"
                 }
-                is com.example.core.enrollment.EnrollmentResult.SignatureMismatch -> {
-                    _statusMessage.value = "QR signature verification failed."
-                }
-                is com.example.core.enrollment.EnrollmentResult.InvalidQr -> {
-                    _statusMessage.value = "Invalid QR code format."
-                }
-            }
         }
     }
 
     fun refreshUsage() {
         viewModelScope.launch {
+            try { refreshDeviceOwnerFlags() } catch (e: Exception) { Log.e("MainViewModel", "Device state refresh failed", e) }
             usageRepository.refreshTodayUsage()
             enforcementManager.enforceCurrentPolicy()
         }
@@ -722,5 +900,9 @@ class MainViewModel @JvmOverloads constructor(
 
     fun clearStatusMessage() {
         _statusMessage.value = null
+    }
+
+    private companion object {
+        const val PAIRING_VALIDITY_MINUTES = 10L
     }
 }

@@ -2,6 +2,10 @@ package com.example.core.model
 
 /**
  * Child device metadata representation.
+ *
+ * Device Owner status is deliberately NOT part of this model: it is a live Android
+ * system fact and must always be read from DeviceOwnerManager.isDeviceOwner(),
+ * never from stored data.
  */
 data class ChildDevice(
     val deviceId: String,
@@ -11,7 +15,6 @@ data class ChildDevice(
     val appVersion: String,
     val lastSeenEpochMs: Long,
     val policyVersion: Int,
-    val isDeviceOwner: Boolean = false,
     val enrollmentStatus: EnrollmentStatus = EnrollmentStatus.ENROLLED
 )
 

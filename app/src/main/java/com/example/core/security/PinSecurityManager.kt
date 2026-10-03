@@ -29,12 +29,17 @@ interface PinSecurityManager {
     fun verifyPin(enteredPin: String): PinVerificationResult
     fun changePin(oldPin: String, newPin: String): Boolean
     fun getRemainingLockoutSeconds(): Long
-    fun clearPinForTesting()
 }
 
+/**
+ * @param testKeyOverride Only for unit tests, where the AndroidKeyStore provider does not exist.
+ * Production code must never pass it: if the Keystore is unavailable the PIN operation fails
+ * closed instead of silently falling back to a weaker, publicly known key.
+ */
 class AndroidPinSecurityManager(
     private val context: Context,
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+    private val testKeyOverride: SecretKey? = null
 ) : PinSecurityManager {
 
     private val secureRandom = SecureRandom()
@@ -152,7 +157,8 @@ class AndroidPinSecurityManager(
         }
     }
 
-    override fun clearPinForTesting() {
+    /** Test-only helper; deliberately not part of the PinSecurityManager interface. */
+    fun clearPinForTesting() {
         prefs.edit().clear().apply()
     }
 
@@ -190,40 +196,21 @@ class AndroidPinSecurityManager(
 
     private data class EncryptedPayload(val ciphertext: ByteArray, val iv: ByteArray)
 
+    private fun masterKey(): SecretKey = testKeyOverride ?: getOrCreateMasterKey()
+
+    // No fallback key: any Keystore failure propagates, and callers fail closed
+    // (setupPin returns false, verifyPin returns Incorrect).
     private fun encryptWithKeystore(plaintext: ByteArray): EncryptedPayload {
-        return try {
-            val key = getOrCreateMasterKey()
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, key)
-            val ciphertext = cipher.doFinal(plaintext)
-            EncryptedPayload(ciphertext, cipher.iv)
-        } catch (e: Exception) {
-            // Fallback for Robolectric or environments where AndroidKeyStore provider is restricted
-            val fallbackIv = ByteArray(12).apply { secureRandom.nextBytes(this) }
-            val fallbackCipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val fallbackKey = javax.crypto.spec.SecretKeySpec(FALLBACK_KEY_BYTES, "AES")
-            val gcmSpec = GCMParameterSpec(128, fallbackIv)
-            fallbackCipher.init(Cipher.ENCRYPT_MODE, fallbackKey, gcmSpec)
-            val ciphertext = fallbackCipher.doFinal(plaintext)
-            EncryptedPayload(ciphertext, fallbackIv)
-        }
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, masterKey())
+        val ciphertext = cipher.doFinal(plaintext)
+        return EncryptedPayload(ciphertext, cipher.iv)
     }
 
     private fun decryptWithKeystore(ciphertext: ByteArray, iv: ByteArray): ByteArray {
-        return try {
-            val key = getOrCreateMasterKey()
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-            val gcmSpec = GCMParameterSpec(128, iv)
-            cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec)
-            cipher.doFinal(ciphertext)
-        } catch (e: Exception) {
-            // Fallback decryption
-            val fallbackCipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val fallbackKey = javax.crypto.spec.SecretKeySpec(FALLBACK_KEY_BYTES, "AES")
-            val gcmSpec = GCMParameterSpec(128, iv)
-            fallbackCipher.init(Cipher.DECRYPT_MODE, fallbackKey, gcmSpec)
-            fallbackCipher.doFinal(ciphertext)
-        }
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, iv))
+        return cipher.doFinal(ciphertext)
     }
 
     companion object {
@@ -243,11 +230,5 @@ class AndroidPinSecurityManager(
         private const val PBKDF2_ITERATIONS = 100_000
         private const val KEY_LENGTH_BITS = 256
 
-        private val FALLBACK_KEY_BYTES = byteArrayOf(
-            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae.toByte(), 0xd2.toByte(), 0xa6.toByte(),
-            0xab.toByte(), 0xf7.toByte(), 0x15, 0x88.toByte(), 0x09, 0xcf.toByte(), 0x4f, 0x3c,
-            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae.toByte(), 0xd2.toByte(), 0xa6.toByte(),
-            0xab.toByte(), 0xf7.toByte(), 0x15, 0x88.toByte(), 0x09, 0xcf.toByte(), 0x4f, 0x3c
-        )
     }
 }
