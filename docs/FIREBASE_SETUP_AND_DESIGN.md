@@ -51,8 +51,15 @@ families/{parentUid}
 3. Authentication -> enable **Anonymous** and your parent provider (Google and/or Email).
 4. Firestore -> create database (production mode).
 5. Download `google-services.json` into `app/` (do NOT commit it to a public repo; the zip had none).
-6. App Check -> register Play Integrity; enforce on Firestore and Authentication after testing.
-7. Deploy rules: `cd firebase && npx firebase deploy --only firestore:rules`.
+6. App Check -> register Play Integrity for the Android app; use the debug provider for debug builds and register the generated debug token under App Check.
+7. After testing, enforce App Check on Firestore and Authentication. Do not enforce before the release Play Integrity fingerprint and debug token are registered.
+8. Deploy rules from the repository root: `cd firebase && npx firebase deploy --project parental-control-3bda8 --only firestore:rules`.
+
+The project mapping is checked in at `firebase/.firebaserc`. Deployment still requires a Firebase CLI login with Firebase Admin/Owner permission; the Android client does not contain deployment credentials.
+
+### App Check runtime behavior
+
+`MainActivity` installs `DebugAppCheckProviderFactory` for debug builds and `PlayIntegrityAppCheckProviderFactory` for release builds. This keeps local debug builds testable without weakening the release configuration.
 
 ## 7. Rules tests
 `cd firebase && npm install && npm test` (needs Java for the Firestore emulator). The checked-in suite covers pairing, policy ownership/versioning, child telemetry, audit immutability, and unlink behavior.
