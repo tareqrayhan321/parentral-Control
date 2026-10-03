@@ -77,6 +77,12 @@ describe('pairing', () => {
     await assertFails(setDoc(doc(childCtx(), 'families', PARENT, 'devices', CHILD),
       { deviceName: 'x', platform: 'Android', appVersion: '1', pairedAt: serverTimestamp(), pairingToken: TOKEN }));
   });
+  it('an unlinked child cannot rejoin with its already-claimed token', async () => {
+    await pairedSetup();
+    await assertSucceeds(deleteDoc(doc(parentCtx(), 'families', PARENT, 'devices', CHILD)));
+    await assertFails(setDoc(doc(childCtx(), 'families', PARENT, 'devices', CHILD),
+      { deviceName: 'Tab', platform: 'Android', appVersion: '1.0', pairedAt: serverTimestamp(), pairingToken: TOKEN }));
+  });
   it('child cannot join a different parent than the token names', async () => {
     await openPairing();
     await assertFails(claimBatch(childCtx(), CHILD, TOKEN, OTHER_PARENT));

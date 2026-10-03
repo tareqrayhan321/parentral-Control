@@ -1,7 +1,6 @@
 package com.example
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -20,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.example.core.sync.AppCheckInstaller
 import com.example.ui.components.ConnectToParentDialog
 import com.example.ui.components.PinDialog
 import com.example.ui.screens.ChildDashboardScreen
@@ -30,10 +30,6 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppMode
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.PinDialogState
-import com.google.firebase.FirebaseApp
-import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -42,7 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        installFirebaseAppCheck()
+        AppCheckInstaller.install(this)
 
         setContent {
             MyApplicationTheme {
@@ -200,25 +196,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        }
-    }
-
-    /**
-     * Debug builds use the local debug provider; release builds use Play Integrity.
-     * If google-services.json is intentionally absent, Firebase remains optional and
-     * the app continues in offline mode.
-     */
-    private fun installFirebaseAppCheck() {
-        if (FirebaseApp.getApps(this).isEmpty()) return
-        runCatching {
-            val provider = if (BuildConfig.DEBUG) {
-                DebugAppCheckProviderFactory.getInstance()
-            } else {
-                PlayIntegrityAppCheckProviderFactory.getInstance()
-            }
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(provider)
-        }.onFailure { error ->
-            Log.w("MainActivity", "Firebase App Check could not be initialized", error)
         }
     }
 }

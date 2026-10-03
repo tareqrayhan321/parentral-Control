@@ -17,7 +17,7 @@ Rules reject an anonymous user acting as parent, so a child cannot promote itsel
 ## 2. Pairing (replaces the fake 6-digit code and the hardcoded HMAC secret)
 1. Parent app creates `pairings/{token}`; token = 128-bit random (UUID without dashes), expiry <= 30 min.
 2. Token is shown as a QR. A typed 6-digit code is NOT used: 10^6 combinations cannot be protected without server-side rate limiting.
-3. Child scans the QR, signs in anonymously, then in ONE batch: updates the pairing to `claimed` (claimedBy = own uid) and creates `families/{parent}/devices/{child}`. Rules validate the token's post-write state with `getAfter`, including expiry, parent, and claimant. A token works once.
+3. Child scans the QR, signs in anonymously, then in ONE batch: updates the pairing to `claimed` (claimedBy = own uid) and creates `families/{parent}/devices/{child}`. Rules require the token to be open and unexpired BEFORE the batch (`get`) and claimed by this child for this parent AFTER it (`getAfter`). A token works once, and an unlinked child cannot rejoin with it.
 4. `list` on `pairings` is denied, so tokens cannot be enumerated.
 
 ## 3. Data model
@@ -59,7 +59,9 @@ The project mapping is checked in at `firebase/.firebaserc`. Deployment still re
 
 ### App Check runtime behavior
 
-`MainActivity` installs `DebugAppCheckProviderFactory` for debug builds and `PlayIntegrityAppCheckProviderFactory` for release builds. This keeps local debug builds testable without weakening the release configuration.
+`AppCheckInstaller` (called from `FirebaseSyncGateway` and `MainActivity`) installs the provider, so it also happens when the process is started by the foreground service or the boot receiver, not only when the Activity opens.
+
+The installer uses `DebugAppCheckProviderFactory` for debug builds and `PlayIntegrityAppCheckProviderFactory` for release builds. This keeps local debug builds testable without weakening the release configuration.
 
 ## 7. Rules tests
 `cd firebase && npm install && npm test` (needs Java for the Firestore emulator). The checked-in suite covers pairing, policy ownership/versioning, child telemetry, audit immutability, and unlink behavior.

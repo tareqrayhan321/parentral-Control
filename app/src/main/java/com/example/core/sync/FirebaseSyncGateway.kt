@@ -29,6 +29,10 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
 
     override val isAvailable: Boolean = FirebaseApp.getApps(context).isNotEmpty()
 
+    init {
+        AppCheckInstaller.install(context)
+    }
+
     private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
     private val db: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
 
