@@ -51,7 +51,8 @@ class EnrollmentTest {
         policyRepository.saveDevice(
             ChildDevice(
                 deviceId = "child1", parentId = "parent1", deviceName = "Tab",
-                lastSeenEpochMs = 0L, policyVersion = 1, enrollmentStatus = EnrollmentStatus.ENROLLED
+                appVersion = "1.0", lastSeenEpochMs = 0L, policyVersion = 1,
+                enrollmentStatus = EnrollmentStatus.ENROLLED
             )
         )
         assertTrue(enrollmentManager.unenrollDevice())
