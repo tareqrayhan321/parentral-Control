@@ -98,6 +98,13 @@ import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
 import com.example.core.model.TimeOfDay
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.material.icons.filled.Sync
 import com.example.ui.theme.StatusAllowed
 import com.example.ui.theme.StatusBlocked
 import com.example.ui.theme.StatusLimited
@@ -263,6 +270,8 @@ fun ParentDashboardScreen(
                     instantLockdown = instantLockdown,
                     policy = policy,
                     todayUsage = todayUsage,
+                    childStatusLabel = childStatusLabel,
+                    onPushSync = onPushSync,
                     onToggleSupervision = onToggleSupervision,
                     onToggleCameraRestriction = onToggleCameraRestriction,
                     onToggleInstallRestriction = onToggleInstallRestriction,
@@ -327,6 +336,8 @@ private fun OverviewTabContent(
     instantLockdown: Boolean,
     policy: Policy,
     todayUsage: Map<String, Int>,
+    childStatusLabel: String = "",
+    onPushSync: () -> Unit = {},
     onToggleSupervision: (Boolean) -> Unit,
     onToggleCameraRestriction: (Boolean) -> Unit,
     onToggleInstallRestriction: (Boolean) -> Unit,
@@ -344,6 +355,17 @@ private fun OverviewTabContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Child summary: who, online state, today's usage, send rules
+        item {
+            ChildSummaryCard(
+                deviceInfo = deviceInfo,
+                statusLabel = childStatusLabel,
+                policy = policy,
+                todayUsage = todayUsage,
+                onPushSync = onPushSync
+            )
+        }
+
         // Supervision System Master Card
         item {
             Card(
@@ -755,6 +777,124 @@ private fun OverviewTabContent(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChildSummaryCard(
+    deviceInfo: ChildDevice?,
+    statusLabel: String,
+    policy: Policy,
+    todayUsage: Map<String, Int>,
+    onPushSync: () -> Unit
+) {
+    val totalMinutes = todayUsage.values.sum()
+    val limited = policy.apps.values.filter { it.mode == RestrictionMode.LIMITED && (it.dailyLimitMinutes ?: 0) > 0 }
+    val budget = limited.sumOf { it.dailyLimitMinutes ?: 0 }
+    val usedOfBudget = limited.sumOf { minOf(todayUsage[it.packageName] ?: 0, it.dailyLimitMinutes ?: 0) }
+    val fraction = if (budget > 0) (usedOfBudget.toFloat() / budget).coerceIn(0f, 1f) else 0f
+
+    val track = MaterialTheme.colorScheme.outlineVariant
+    val ringColor = when {
+        fraction >= 0.9f -> StatusBlocked
+        fraction >= 0.7f -> StatusLimited
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = deviceInfo?.deviceName?.firstOrNull()?.uppercase() ?: "?",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = deviceInfo?.deviceName ?: "কোনো সন্তানের ফোন যুক্ত নেই",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (deviceInfo != null) statusLabel else "জোড়া ট্যাবে গিয়ে QR তৈরি করুন",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (deviceInfo != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(92.dp), contentAlignment = Alignment.Center) {
+                        Canvas(modifier = Modifier.size(92.dp)) {
+                            val stroke = 11.dp.toPx()
+                            val topLeft = Offset(stroke / 2, stroke / 2)
+                            val arcSize = Size(size.width - stroke, size.height - stroke)
+                            drawArc(
+                                color = track, startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                                topLeft = topLeft, size = arcSize, style = Stroke(width = stroke)
+                            )
+                            drawArc(
+                                color = ringColor, startAngle = -90f, sweepAngle = 360f * fraction, useCenter = false,
+                                topLeft = topLeft, size = arcSize, style = Stroke(width = stroke, cap = StrokeCap.Round)
+                            )
+                        }
+                        Text(
+                            text = "%d:%02d".format(totalMinutes / 60, totalMinutes % 60),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "আজকের স্ক্রিন টাইম",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = when {
+                                totalMinutes == 0 -> "ব্যবহারের তথ্য এখনো সিঙ্ক হয়নি"
+                                budget > 0 -> "সীমাযুক্ত অ্যাপে ${(fraction * 100).toInt()}% ব্যবহার"
+                                else -> "কোনো সময়সীমা সেট করা নেই"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onPushSync,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("push_sync_button"),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("নিয়ম সন্তানের ফোনে পাঠান", fontWeight = FontWeight.Bold)
                 }
             }
         }

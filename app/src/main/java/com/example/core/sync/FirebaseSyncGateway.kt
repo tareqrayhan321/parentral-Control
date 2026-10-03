@@ -156,6 +156,13 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         }
     }
 
+    override fun observeUsage(deviceId: String, dateString: String): Flow<Map<String, Int>?> {
+        val parent = currentParent() ?: return kotlinx.coroutines.flow.flowOf(null)
+        return deviceRef(parent.uid, deviceId).collection("usage").document(dateString).snapshots().map { s ->
+            if (!s.exists()) null else UsageSerializer.fromRemote(s.get("minutesByPackage") as? Map<*, *>)
+        }
+    }
+
     override suspend fun unlinkDevice(deviceId: String): Result<Unit> = runCatching {
         if (!isAvailable) throw notConfigured()
         val parent = currentParent() ?: error("Sign in with Google first.")
@@ -237,6 +244,18 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         deviceRef(parentUid, childUid).collection("inventory").document("current").set(
             mapOf(
                 "apps" to apps.take(500).map { mapOf("pkg" to it.packageName, "name" to it.displayName) },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
+
+    override suspend fun uploadUsage(
+        parentUid: String, childUid: String, dateString: String, minutes: Map<String, Int>
+    ): Result<Unit> = runCatching {
+        if (!isAvailable) throw notConfigured()
+        deviceRef(parentUid, childUid).collection("usage").document(dateString).set(
+            mapOf(
+                "minutesByPackage" to UsageSerializer.toRemote(minutes),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
         ).await()

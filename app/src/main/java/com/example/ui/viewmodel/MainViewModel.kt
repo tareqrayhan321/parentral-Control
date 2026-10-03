@@ -228,7 +228,7 @@ class MainViewModel @JvmOverloads constructor(
             try {
                 loadInitialData()
                 startSync()
-                enforcementManager.initializeDeviceEnforcement()
+                if (!isParentRole()) enforcementManager.initializeDeviceEnforcement()
                 refreshUsage()
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error in initialization", e)
@@ -368,6 +368,20 @@ class MainViewModel @JvmOverloads constructor(
                     _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
                         .flatMapLatest { id -> if (id == null) flowOf(null) else syncGateway.observeHeartbeat(id) }
                         .collect { _childHeartbeat.value = it }
+                }
+            }
+            launch {
+                retrying {
+                    val deviceIds = _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
+                    val dates = clock.map { LocalDate.now().toString() }.distinctUntilChanged()
+                    combine(deviceIds, dates) { id, date -> id to date }
+                        .flatMapLatest { (id, date) ->
+                            if (id == null) flowOf(null to date)
+                            else syncGateway.observeUsage(id, date).map { it to date }
+                        }
+                        .collect { (minutes, date) ->
+                            minutes?.forEach { (pkg, min) -> policyRepository.recordTodayUsage(pkg, date, min) }
+                        }
                 }
             }
             launch {
@@ -893,8 +907,12 @@ class MainViewModel @JvmOverloads constructor(
     fun refreshUsage() {
         viewModelScope.launch {
             try { refreshDeviceOwnerFlags() } catch (e: Exception) { Log.e("MainViewModel", "Device state refresh failed", e) }
-            usageRepository.refreshTodayUsage()
-            enforcementManager.enforceCurrentPolicy()
+            // A parent phone shows the CHILD's usage (synced from Firestore); it must never measure
+            // or enforce its own usage against the child's policy.
+            if (!isParentRole()) {
+                usageRepository.refreshTodayUsage()
+                enforcementManager.enforceCurrentPolicy()
+            }
         }
     }
 

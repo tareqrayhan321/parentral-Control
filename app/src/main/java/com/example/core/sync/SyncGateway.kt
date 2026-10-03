@@ -20,6 +20,8 @@ interface SyncGateway {
     fun observeDevices(): Flow<List<RemoteDevice>>
     fun observeHeartbeat(deviceId: String): Flow<RemoteHeartbeat?>
     fun observeInventory(deviceId: String): Flow<RemoteInventory?>
+    /** Minutes per package for the given local date (YYYY-MM-DD), or null if the child has not reported yet. */
+    fun observeUsage(deviceId: String, dateString: String): Flow<Map<String, Int>?>
     suspend fun unlinkDevice(deviceId: String): Result<Unit>
 
     // ---- child side ----
@@ -33,4 +35,5 @@ interface SyncGateway {
         isDeviceOwner: Boolean, accessibilityEnabled: Boolean, appVersion: String
     ): Result<Unit>
     suspend fun uploadInventory(parentUid: String, childUid: String, apps: List<InstalledApp>): Result<Unit>
+    suspend fun uploadUsage(parentUid: String, childUid: String, dateString: String, minutes: Map<String, Int>): Result<Unit>
 }
