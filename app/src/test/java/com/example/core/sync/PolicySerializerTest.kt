@@ -71,4 +71,27 @@ class PolicySerializerTest {
         val pkgs = (map["apps"] as List<*>).map { (it as Map<*, *>)["pkg"] }
         assertTrue("com.example.game" in pkgs)
     }
+
+    @Test
+    fun `controls round trip`() {
+        val c = com.example.core.policy.PolicyControls(
+            supervised = false, cameraBlocked = true, installBlocked = false,
+            mandatoryDns = true, dnsHost = "dns.example.org", lockdown = true
+        )
+        val map = PolicySerializer.toRemoteMap(policy, c)
+        assertEquals(c, PolicySerializer.controlsFromRemote(map))
+    }
+
+    @Test
+    fun `no controls in the document means leave the device alone`() {
+        assertEquals(null, PolicySerializer.controlsFromRemote(PolicySerializer.toRemoteMap(policy)))
+    }
+
+    @Test
+    fun `invalid dns host falls back to the default`() {
+        val map = mapOf("controls" to mapOf("dnsHost" to "bad host; rm -rf", "lockdown" to true))
+        val c = PolicySerializer.controlsFromRemote(map)!!
+        assertEquals(com.example.core.policy.PolicyControls.DEFAULT_DNS_HOST, c.dnsHost)
+        assertTrue(c.lockdown)
+    }
 }

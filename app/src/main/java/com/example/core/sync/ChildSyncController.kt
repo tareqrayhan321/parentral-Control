@@ -6,6 +6,7 @@ import android.util.Log
 import com.example.core.apps.InstalledAppsProvider
 import com.example.core.database.repository.PolicyRepository
 import com.example.core.model.EnrollmentStatus
+import com.example.core.policy.PolicyControls
 import com.example.core.usage.UsageRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,7 @@ class ChildSyncController(
     private val usage: UsageRepository,
     private val enrollmentManager: EnrollmentManager,
     private val isDeviceOwner: () -> Boolean,
+    private val applyControls: (PolicyControls) -> Unit,
     private val enforcePolicy: suspend () -> Unit
 ) {
     // The controller owns its scope so it keeps running no matter which caller (service, UI) started it.
@@ -103,6 +105,10 @@ class ChildSyncController(
             )
             if (applied) {
                 prefs.edit().putInt(KEY_ACKED, remote.version).apply()
+                // Controls first: enforcement below reads the lockdown flag from the store.
+                remote.controls?.let { c ->
+                    try { applyControls(c) } catch (e: Exception) { Log.e(TAG, "Applying controls failed", e) }
+                }
                 repository.logSyncAudit("POLICY_APPLIED_FROM_PARENT", remote.version, "Applied remote policy v${remote.version}")
                 enforcePolicy()
                 sendHeartbeat(parentUid, childUid)

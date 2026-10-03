@@ -85,13 +85,15 @@ service cloud.firestore {
           allow create: if isParent(pid) && name == 'current'
             && exists(/databases/$(database)/documents/families/$(pid)/devices/$(cid))
             && request.resource.data.version == 1
-            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules'])
+            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules', 'controls'])
+            && request.resource.data.controls is map
             && request.resource.data.apps.size() <= 500
             && request.resource.data.schedules.size() <= 50;
 
           allow update: if isParent(pid) && name == 'current'
             && request.resource.data.version == resource.data.version + 1
-            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules'])
+            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules', 'controls'])
+            && request.resource.data.controls is map
             && request.resource.data.apps.size() <= 500
             && request.resource.data.schedules.size() <= 50;
         }

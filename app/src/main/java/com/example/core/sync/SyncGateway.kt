@@ -3,6 +3,7 @@ package com.example.core.sync
 import android.app.Activity
 import com.example.core.apps.InstalledApp
 import com.example.core.model.Policy
+import com.example.core.policy.PolicyControls
 import kotlinx.coroutines.flow.Flow
 
 /** Everything the app needs from the backend. The UI never touches Firebase directly. */
@@ -16,7 +17,7 @@ interface SyncGateway {
     suspend fun signOut()
     suspend fun createPairingToken(validityMinutes: Long = 10): Result<PairingToken>
     /** Returns the new REMOTE policy version. */
-    suspend fun pushPolicy(deviceId: String, policy: Policy): Result<Int>
+    suspend fun pushPolicy(deviceId: String, policy: Policy, controls: PolicyControls): Result<Int>
     fun observeDevices(): Flow<List<RemoteDevice>>
     fun observeHeartbeat(deviceId: String): Flow<RemoteHeartbeat?>
     fun observeInventory(deviceId: String): Flow<RemoteInventory?>

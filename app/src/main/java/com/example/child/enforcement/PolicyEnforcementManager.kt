@@ -11,7 +11,9 @@ import com.example.core.database.repository.PolicyRepository
 import com.example.core.database.repository.RoomPolicyRepository
 import com.example.core.model.RestrictionDecision
 import com.example.core.model.TimeOfDay
+import com.example.core.policy.ControlsStore
 import com.example.core.policy.DefaultPolicyEngine
+import com.example.core.policy.withLockdown
 import com.example.core.policy.PolicyEngine
 import com.example.core.usage.AndroidUsageRepository
 import com.example.core.usage.UsageRepository
@@ -41,7 +43,8 @@ class DefaultPolicyEnforcementManager(
     private val policyRepository: PolicyRepository = RoomPolicyRepository(ChildDatabase.getInstance(context)),
     private val usageRepository: UsageRepository = AndroidUsageRepository(context, policyRepository),
     private val deviceOwnerManager: DeviceOwnerManager = AndroidDeviceOwnerManager(context),
-    private val policyEngine: PolicyEngine = DefaultPolicyEngine()
+    private val policyEngine: PolicyEngine = DefaultPolicyEngine(),
+    private val controlsStore: ControlsStore = ControlsStore(context)
 ) : PolicyEnforcementManager {
 
     override suspend fun initializeDeviceEnforcement() = withContext(Dispatchers.IO) {
@@ -64,7 +67,7 @@ class DefaultPolicyEnforcementManager(
     }
 
     override suspend fun enforceCurrentPolicy(): Map<String, RestrictionDecision> = withContext(Dispatchers.IO) {
-        val policy = policyRepository.getCurrentPolicy()
+        val policy = policyRepository.getCurrentPolicy().withLockdown(controlsStore.get().lockdown)
         val now = ZonedDateTime.now()
         val currentTime = TimeOfDay(now.hour, now.minute)
         val currentDay = now.dayOfWeek

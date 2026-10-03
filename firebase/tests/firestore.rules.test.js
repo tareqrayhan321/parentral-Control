@@ -27,7 +27,7 @@ async function pairedSetup() {
   await openPairing();
   await assertSucceeds(claimBatch(childCtx()));
 }
-const policyV = (v) => ({ version: v, updatedAt: serverTimestamp(), apps: {}, schedules: {} });
+const policyV = (v) => ({ version: v, updatedAt: serverTimestamp(), apps: {}, schedules: {}, controls: { lockdown: false } });
 
 before(async () => {
   env = await initializeTestEnvironment({
@@ -97,6 +97,13 @@ describe('policy', () => {
     await assertFails(updateDoc(ref(parentCtx()), policyV(1)));   // same version
     await assertFails(updateDoc(ref(parentCtx()), policyV(5)));   // skipped version
     await assertSucceeds(updateDoc(ref(parentCtx()), policyV(2)));
+  });
+  it('policy without controls or with unknown fields is rejected', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    const noControls = { version: 1, updatedAt: serverTimestamp(), apps: {}, schedules: {} };
+    await assertFails(setDoc(ref(parentCtx()), noControls));
+    await assertFails(setDoc(ref(parentCtx()), { ...policyV(1), extra: 'x' }));
+    await assertSucceeds(setDoc(ref(parentCtx()), policyV(1)));
   });
   it('child can read but never write policy', async () => {
     const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');

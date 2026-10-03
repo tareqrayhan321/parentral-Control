@@ -29,6 +29,9 @@ import com.example.core.model.TimeOfDay
 import com.example.core.security.AndroidPinSecurityManager
 import com.example.core.security.PinSecurityManager
 import com.example.core.security.PinVerificationResult
+import com.example.core.policy.ControlsApplier
+import com.example.core.policy.ControlsStore
+import com.example.core.policy.PolicyControls
 import com.example.core.sync.ChildStatusFormatter
 import com.example.child.protection.DeviceProtectionManager
 import com.example.core.sync.ChildSyncController
@@ -205,6 +208,11 @@ class MainViewModel @JvmOverloads constructor(
 
     private val childSync: ChildSyncController = ChildSyncProvider.get(application)
 
+    // Device-level switches (camera, installs, DNS, supervision, lockdown). Parent phone: desired state that is
+    // pushed to the child. Child phone (or standalone use): applied to this phone through Device Owner.
+    private val controlsStore = ControlsStore(application)
+    private val controlsApplier = ControlsApplier(deviceOwnerManager, controlsStore)
+
     init {
         viewModelScope.launch {
             childSync.linkLost.collect {
@@ -258,12 +266,24 @@ class MainViewModel @JvmOverloads constructor(
 
     /** Re-reads live Device Owner / restriction state from the system. */
     private fun refreshDeviceOwnerFlags() {
-        _isDeviceOwner.value = deviceOwnerManager.isDeviceOwner()
-        _isSupervised.value = deviceOwnerManager.isSupervisionActive()
-        _isCameraBlocked.value = deviceOwnerManager.isCameraDisabled()
-        _isInstallBlocked.value = deviceOwnerManager.isAppInstallBlocked()
-        _isMandatoryDnsEnforced.value = deviceOwnerManager.isMandatoryDnsEnforced()
-        _enforcedDnsHost.value = deviceOwnerManager.getEnforcedDnsHost()
+        val stored = controlsStore.get()
+        _instantLockdown.value = stored.lockdown
+        if (isParentRole()) {
+            // Parent phone: show the settings it will send, and the CHILD's Device Owner status.
+            _isDeviceOwner.value = _childHeartbeat.value?.isDeviceOwner ?: false
+            _isSupervised.value = stored.supervised
+            _isCameraBlocked.value = stored.cameraBlocked
+            _isInstallBlocked.value = stored.installBlocked
+            _isMandatoryDnsEnforced.value = stored.mandatoryDns
+            _enforcedDnsHost.value = stored.dnsHost
+        } else {
+            _isDeviceOwner.value = deviceOwnerManager.isDeviceOwner()
+            _isSupervised.value = deviceOwnerManager.isSupervisionActive()
+            _isCameraBlocked.value = deviceOwnerManager.isCameraDisabled()
+            _isInstallBlocked.value = deviceOwnerManager.isAppInstallBlocked()
+            _isMandatoryDnsEnforced.value = deviceOwnerManager.isMandatoryDnsEnforced()
+            _enforcedDnsHost.value = deviceOwnerManager.getEnforcedDnsHost()
+        }
     }
 
     /**
@@ -367,7 +387,10 @@ class MainViewModel @JvmOverloads constructor(
                 retrying {
                     _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
                         .flatMapLatest { id -> if (id == null) flowOf(null) else syncGateway.observeHeartbeat(id) }
-                        .collect { _childHeartbeat.value = it }
+                        .collect {
+                            _childHeartbeat.value = it
+                            _isDeviceOwner.value = it?.isDeviceOwner ?: false
+                        }
                 }
             }
             launch {
@@ -608,80 +631,84 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    /** Saves the new controls; on a parent phone they wait for the push, otherwise they are applied here. */
+    private fun commitControls(updated: PolicyControls) {
+        _isSupervised.value = updated.supervised
+        _isCameraBlocked.value = updated.cameraBlocked
+        _isInstallBlocked.value = updated.installBlocked
+        _isMandatoryDnsEnforced.value = updated.mandatoryDns
+        _enforcedDnsHost.value = updated.dnsHost
+        _instantLockdown.value = updated.lockdown
+        if (isParentRole()) controlsStore.set(updated) else controlsApplier.apply(updated)
+    }
+
+    private fun parentHint() = if (isParentRole()) " Press 'Send rules' to apply on the child." else ""
+
     fun toggleInstantLockdown(locked: Boolean) {
         viewModelScope.launch {
-            _instantLockdown.value = locked
-            val currentPolicy = policyRepository.getCurrentPolicy()
-
-            // When instant lockdown is active, all non-system apps are blocked
-            val updatedApps = currentPolicy.apps.mapValues { (_, app) ->
-                if (locked) app.copy(mode = RestrictionMode.BLOCKED)
-                else app.copy(mode = if (app.dailyLimitMinutes != null) RestrictionMode.LIMITED else RestrictionMode.ALLOWED)
-            }
-
-            val newPolicy = currentPolicy.copy(
-                version = currentPolicy.version + 1,
-                updatedAtEpochMs = System.currentTimeMillis(),
-                apps = updatedApps
+            // A flag, not a rewrite of the app rules: releasing the lockdown restores every rule exactly.
+            commitControls(controlsStore.get().copy(lockdown = locked))
+            policyRepository.logSyncAudit(
+                event = "INSTANT_LOCKDOWN",
+                version = policy.value.version,
+                details = if (locked) "Instant lockdown enabled" else "Instant lockdown released"
             )
-
-            policyRepository.applyNewPolicyAtomic(newPolicy)
-            enforcementManager.enforceCurrentPolicy()
-            _statusMessage.value = if (locked) "Instant Lockdown Enabled! All apps paused." else "Lockdown Released. Normal limits restored."
+            if (isParentRole()) {
+                // Lockdown must reach the child immediately, so it is sent without waiting for a manual push.
+                pushSyncToChild()
+            } else {
+                enforcementManager.enforceCurrentPolicy()
+                _statusMessage.value = if (locked) "Instant Lockdown Enabled! All apps paused." else "Lockdown Released. Normal limits restored."
+            }
         }
     }
 
     fun toggleSupervision(active: Boolean) {
         viewModelScope.launch {
-            _isSupervised.value = active
-            deviceOwnerManager.setSupervisionActive(active)
+            commitControls(controlsStore.get().copy(supervised = active))
             policyRepository.logSyncAudit(
                 event = "SUPERVISION_TOGGLED",
                 version = policy.value.version,
                 details = if (active) "Parental Supervision enabled with tamper protection" else "Supervision paused"
             )
-            enforcementManager.enforceCurrentPolicy()
-            _statusMessage.value = if (active) "Parental Supervision Active." else "Supervision Paused."
+            if (!isParentRole()) enforcementManager.enforceCurrentPolicy()
+            _statusMessage.value = (if (active) "Parental Supervision Active." else "Supervision Paused.") + parentHint()
         }
     }
 
     fun toggleCameraRestriction(blocked: Boolean) {
         viewModelScope.launch {
-            _isCameraBlocked.value = blocked
-            deviceOwnerManager.setCameraDisabled(blocked)
+            commitControls(controlsStore.get().copy(cameraBlocked = blocked))
             policyRepository.logSyncAudit(
                 event = "CAMERA_RESTRICTION",
                 version = policy.value.version,
                 details = if (blocked) "Camera disabled on child device" else "Camera access allowed"
             )
-            _statusMessage.value = if (blocked) "Camera access blocked." else "Camera access restored."
+            _statusMessage.value = (if (blocked) "Camera access blocked." else "Camera access restored.") + parentHint()
         }
     }
 
     fun toggleInstallRestriction(blocked: Boolean) {
         viewModelScope.launch {
-            _isInstallBlocked.value = blocked
-            deviceOwnerManager.setAppInstallBlocked(blocked)
+            commitControls(controlsStore.get().copy(installBlocked = blocked))
             policyRepository.logSyncAudit(
                 event = "APP_INSTALL_RESTRICTION",
                 version = policy.value.version,
                 details = if (blocked) "App installation blocked" else "App installation permitted"
             )
-            _statusMessage.value = if (blocked) "App installation blocked." else "App installation permitted."
+            _statusMessage.value = (if (blocked) "App installation blocked." else "App installation permitted.") + parentHint()
         }
     }
 
     fun setMandatoryDns(enabled: Boolean, dnsHost: String) {
         viewModelScope.launch {
-            _isMandatoryDnsEnforced.value = enabled
-            _enforcedDnsHost.value = dnsHost
-            deviceOwnerManager.setMandatoryDns(enabled, dnsHost)
+            commitControls(controlsStore.get().copy(mandatoryDns = enabled, dnsHost = dnsHost))
             policyRepository.logSyncAudit(
                 event = "MANDATORY_DNS_CONFIGURED",
                 version = policy.value.version,
                 details = if (enabled) "Mandatory DNS locked to $dnsHost (Private DNS Settings restricted)" else "Mandatory DNS disabled"
             )
-            _statusMessage.value = if (enabled) "Mandatory DNS Active ($dnsHost)" else "Mandatory DNS Disabled."
+            _statusMessage.value = (if (enabled) "Mandatory DNS Active ($dnsHost)" else "Mandatory DNS Disabled.") + parentHint()
         }
     }
 
@@ -892,7 +919,7 @@ class MainViewModel @JvmOverloads constructor(
         }
         viewModelScope.launch {
             val local = policyRepository.getCurrentPolicy()
-            syncGateway.pushPolicy(device.deviceId, local)
+            syncGateway.pushPolicy(device.deviceId, local, controlsStore.get())
                 .onSuccess { remoteVersion ->
                     policyRepository.logSyncAudit("POLICY_PUSHED", remoteVersion, "Pushed policy as remote v$remoteVersion")
                     _statusMessage.value = "Rules sent (v$remoteVersion). The child applies them when it is online."
