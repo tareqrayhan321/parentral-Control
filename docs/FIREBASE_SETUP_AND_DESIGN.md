@@ -17,7 +17,7 @@ Rules reject an anonymous user acting as parent, so a child cannot promote itsel
 ## 2. Pairing (replaces the fake 6-digit code and the hardcoded HMAC secret)
 1. Parent app creates `pairings/{token}`; token = 128-bit random (UUID without dashes), expiry <= 30 min.
 2. Token is shown as a QR. A typed 6-digit code is NOT used: 10^6 combinations cannot be protected without server-side rate limiting.
-3. Child scans the QR, signs in anonymously, then in ONE batch: updates the pairing to `claimed` (claimedBy = own uid) and creates `families/{parent}/devices/{child}`. Rules check the token is open, unexpired, names that parent, and was claimed by this child. A token works once.
+3. Child scans the QR, signs in anonymously, then in ONE batch: updates the pairing to `claimed` (claimedBy = own uid) and creates `families/{parent}/devices/{child}`. Rules validate the token's post-write state with `getAfter`, including expiry, parent, and claimant. A token works once.
 4. `list` on `pairings` is denied, so tokens cannot be enumerated.
 
 ## 3. Data model
@@ -55,7 +55,7 @@ families/{parentUid}
 7. Deploy rules: `cd firebase && npx firebase deploy --only firestore:rules`.
 
 ## 7. Rules tests
-`cd firebase && npm install && npm test` (needs Java for the Firestore emulator). Not run in the authoring environment: the emulator download is blocked there, so run these before trusting the rules.
+`cd firebase && npm install && npm test` (needs Java for the Firestore emulator). The checked-in suite covers pairing, policy ownership/versioning, child telemetry, audit immutability, and unlink behavior.
 
 ## 8. Runtime layout (child phone)
 - `ChildSyncProvider` holds ONE `ChildSyncController` per process. It owns its coroutine scope.

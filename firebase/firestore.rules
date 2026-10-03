@@ -17,7 +17,10 @@ service cloud.firestore {
     function isChild(cid)  { return signedIn() && request.auth.uid == cid && provider() == 'anonymous'; }
     function doc(path) { return /databases/$(database)/documents/$(path); }
     // A child only counts while its device doc exists; unlinking deletes it and cuts access.
-    function linkedChild(pid, cid) { return isChild(cid) && exists(doc('families/' + pid + '/devices/' + cid)); }
+    function linkedChild(pid, cid) {
+      return isChild(cid)
+        && exists(/databases/$(database)/documents/families/$(pid)/devices/$(cid));
+    }
 
     // ---- Pairing tokens -------------------------------------------------------------
     // Token = 128-bit random doc id carried in the QR. Knowing the id is the capability,
@@ -57,10 +60,12 @@ service cloud.firestore {
         allow create: if isChild(cid)
           && request.resource.data.keys().hasOnly(['deviceName', 'platform', 'appVersion', 'pairedAt', 'pairingToken'])
           && request.resource.data.pairedAt == request.time
-          && get(doc('pairings/' + request.resource.data.pairingToken)).data.status == 'open'
-          && get(doc('pairings/' + request.resource.data.pairingToken)).data.expiresAt > request.time
-          && get(doc('pairings/' + request.resource.data.pairingToken)).data.parentUid == pid
-          && getAfter(doc('pairings/' + request.resource.data.pairingToken)).data.claimedBy == cid;
+          // The token is updated in the same batch, so validate its post-write state.
+          // Immutable fields (parentUid/expiry) remain present after the claim.
+          && getAfter(/databases/$(database)/documents/pairings/$(request.resource.data.pairingToken)).data.status == 'claimed'
+          && getAfter(/databases/$(database)/documents/pairings/$(request.resource.data.pairingToken)).data.claimedBy == cid
+          && getAfter(/databases/$(database)/documents/pairings/$(request.resource.data.pairingToken)).data.expiresAt > request.time
+          && getAfter(/databases/$(database)/documents/pairings/$(request.resource.data.pairingToken)).data.parentUid == pid;
 
         allow update: if (isParent(pid)
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deviceName']))
@@ -75,7 +80,7 @@ service cloud.firestore {
           allow read: if isParent(pid) || linkedChild(pid, cid);
 
           allow create: if isParent(pid) && name == 'current'
-            && exists(doc('families/' + pid + '/devices/' + cid))
+            && exists(/databases/$(database)/documents/families/$(pid)/devices/$(cid))
             && request.resource.data.version == 1
             && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules'])
             && request.resource.data.apps.size() <= 500
