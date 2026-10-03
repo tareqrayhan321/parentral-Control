@@ -72,3 +72,8 @@ The installer uses `DebugAppCheckProviderFactory` for debug builds and `PlayInte
 - `BootReceiver` restarts the service after reboot when the device is paired.
 - The UI only calls `start()` (idempotent) and listens to `linkLost`.
 - QR scanning uses the Google code scanner (play-services-code-scanner): needs Google Play services, no CAMERA permission.
+
+## 9. Device controls and lockdown
+The policy document also carries `controls` (supervised, camera, install, dns, dnsHost, lockdown). The parent's switches only
+edit the desired state on the parent phone; "Send rules" (and the lockdown button, automatically) writes it to Firestore, and the
+child applies it through Device Owner. Lockdown is a flag, never a rewrite of the app rules, so releasing it restores every rule.

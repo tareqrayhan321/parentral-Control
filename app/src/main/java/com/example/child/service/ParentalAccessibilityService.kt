@@ -10,7 +10,9 @@ import com.example.core.database.repository.RoomPolicyRepository
 import com.example.core.model.BlockReason
 import com.example.core.model.RestrictionDecision
 import com.example.core.model.TimeOfDay
+import com.example.core.policy.ControlsStore
 import com.example.core.policy.DefaultPolicyEngine
+import com.example.core.policy.withLockdown
 import com.example.core.policy.PolicyEngine
 import com.example.core.usage.AndroidUsageRepository
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +66,7 @@ class ParentalAccessibilityService : AccessibilityService() {
 
     private suspend fun checkAndEnforceApp(packageName: String) {
         val policy = policyRepository.getCurrentPolicy()
+            .withLockdown(ControlsStore(applicationContext).get().lockdown)
 
         val now = ZonedDateTime.now()
         val currentTime = TimeOfDay(now.hour, now.minute)

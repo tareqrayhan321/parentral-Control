@@ -362,6 +362,8 @@ private fun OverviewTabContent(
                 statusLabel = childStatusLabel,
                 policy = policy,
                 todayUsage = todayUsage,
+                instantLockdown = instantLockdown,
+                onToggleInstantLockdown = onToggleInstantLockdown,
                 onPushSync = onPushSync
             )
         }
@@ -789,6 +791,8 @@ private fun ChildSummaryCard(
     statusLabel: String,
     policy: Policy,
     todayUsage: Map<String, Int>,
+    instantLockdown: Boolean,
+    onToggleInstantLockdown: (Boolean) -> Unit,
     onPushSync: () -> Unit
 ) {
     val totalMinutes = todayUsage.values.sum()
@@ -884,17 +888,39 @@ private fun ChildSummaryCard(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onPushSync,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("push_sync_button"),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("নিয়ম সন্তানের ফোনে পাঠান", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onToggleInstantLockdown(!instantLockdown) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("lockdown_button"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(
+                            if (instantLockdown) Icons.Default.LockOpen else Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (instantLockdown) "লক খুলুন" else "এখনই লক", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onPushSync,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("push_sync_button"),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("নিয়ম পাঠান", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
