@@ -108,6 +108,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TaskAlt
 import com.example.ui.theme.StatusAllowed
 import com.example.ui.theme.StatusBlocked
 import com.example.ui.theme.StatusLimited
@@ -171,6 +172,7 @@ fun ParentDashboardScreen(
                         Text(
                             text = when (currentTab) {
                                 ParentTab.APPS -> "Apps"
+                                ParentTab.HABITS -> "Habits"
                                 ParentTab.SCHEDULES -> "Schedules"
                                 ParentTab.PAIRING -> "Account & pairing"
                                 ParentTab.AUDIT -> "Activity"
@@ -196,18 +198,18 @@ fun ParentDashboardScreen(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = currentTab == ParentTab.DASHBOARD,
+                    selected = currentTab == ParentTab.DASHBOARD || currentTab == ParentTab.APPS,
                     onClick = { onSelectTab(ParentTab.DASHBOARD) },
                     icon = { Icon(Icons.Default.Security, contentDescription = "Home") },
                     label = { Text("Home") },
                     modifier = Modifier.testTag("tab_overview")
                 )
                 NavigationBarItem(
-                    selected = currentTab == ParentTab.APPS,
-                    onClick = { onSelectTab(ParentTab.APPS) },
-                    icon = { Icon(Icons.Default.Apps, contentDescription = "Apps") },
-                    label = { Text("Apps") },
-                    modifier = Modifier.testTag("tab_apps")
+                    selected = currentTab == ParentTab.HABITS,
+                    onClick = { onSelectTab(ParentTab.HABITS) },
+                    icon = { Icon(Icons.Default.TaskAlt, contentDescription = "Habits") },
+                    label = { Text("Habits") },
+                    modifier = Modifier.testTag("tab_habits")
                 )
                 NavigationBarItem(
                     selected = currentTab == ParentTab.SCHEDULES,
@@ -266,11 +268,13 @@ fun ParentDashboardScreen(
                     onPushSync = onPushSync,
                     onUnpairChild = onUnpairChild,
                     onRegenerateQr = onRegenerateQr,
+                    onOpenApps = { onSelectTab(ParentTab.APPS) },
                     onOpenAccount = { onSelectTab(ParentTab.PAIRING) },
                     onChangePin = onChangePinRequested,
                     onSwitchRole = onSwitchRoleRequested,
                     onSignOut = onSignOut
                 )
+                ParentTab.HABITS -> HabitsTabContent()
                 ParentTab.APPS -> AppsTabContent(
                     policy = policy,
                     todayUsage = todayUsage,

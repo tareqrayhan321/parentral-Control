@@ -71,6 +71,7 @@ enum class AppMode {
 enum class ParentTab {
     DASHBOARD,
     APPS,
+    HABITS,
     SCHEDULES,
     PAIRING,
     AUDIT

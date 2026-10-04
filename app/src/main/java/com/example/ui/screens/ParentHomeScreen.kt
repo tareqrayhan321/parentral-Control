@@ -25,6 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
@@ -125,6 +128,7 @@ fun ParentHomeTab(
     onPushSync: () -> Unit,
     onUnpairChild: () -> Unit,
     onRegenerateQr: () -> Unit,
+    onOpenApps: () -> Unit,
     onOpenAccount: () -> Unit,
     onChangePin: () -> Unit,
     onSwitchRole: () -> Unit,
@@ -369,6 +373,31 @@ fun ParentHomeTab(
                                         contentDescription = "Details"
                                     )
                                 }
+                            }
+
+                            // The child's apps (usage, limits, blocks) live under the child.
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color(0xFFF1F5F8))
+                                    .clickable(onClick = onOpenApps)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    .testTag("child_apps_button"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Apps, contentDescription = null, tint = Color(0xFF0B3954))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Apps", fontWeight = FontWeight.Bold, color = InkDark)
+                                    Text(
+                                        "${policy.apps.size} apps • $blockedCount blocked",
+                                        fontSize = 12.sp,
+                                        color = InkSoft
+                                    )
+                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = InkSoft)
                             }
 
                             if (expanded) {
@@ -628,5 +657,32 @@ fun AddChildDialog(
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
         }
+    }
+}
+
+/** Habits tab: content will be defined later. */
+@Composable
+fun HabitsTabContent() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HomeBg)
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFDDEBF7)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.TaskAlt, contentDescription = null, tint = Color(0xFF0B3954), modifier = Modifier.size(44.dp))
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Text("Habits", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = InkDark)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Coming soon", fontSize = 15.sp, color = InkSoft, textAlign = TextAlign.Center)
     }
 }
