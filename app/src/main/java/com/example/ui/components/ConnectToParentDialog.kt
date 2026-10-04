@@ -1,5 +1,10 @@
 package com.example.ui.components
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,6 +76,26 @@ fun ConnectToParentDialog(
         // The user cancelling the scanner is not an error, so there is no cancel listener message.
     }
 
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startScan()
+        else errorMessage = "ক্যামেরা পারমিশন দেওয়া হয়নি। Settings → Apps → এই অ্যাপ → Permissions → Camera চালু করুন।"
+    }
+
+    fun scanWithPermission() {
+        errorMessage = null
+        val dpm = context.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE)
+            as? android.app.admin.DevicePolicyManager
+        if (dpm?.getCameraDisabled(null) == true) {
+            errorMessage = "এই ডিভাইসে ক্যামেরা অভিভাবকের নিয়মে বন্ধ করা আছে, তাই স্ক্যান করা যাচ্ছে না। QR টেক্সট পেস্ট করুন।"
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) startScan() else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -129,7 +154,7 @@ fun ConnectToParentDialog(
                 Button(
                     onClick = {
                         errorMessage = null
-                        startScan()
+                        scanWithPermission()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
