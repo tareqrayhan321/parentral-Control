@@ -53,8 +53,22 @@ object PolicySerializer {
     }
 
     private val DNS_HOST_REGEX = Regex("^[A-Za-z0-9.-]{1,253}$")
-    /** Compatibility alias retained for callers from the earlier sync implementation. */
-    fun controlsFromRemote(data: Map<String, Any?>): PolicyControls? = controlsFromRemoteMap(data)
+    private val LEGACY_HOST_REGEX = Regex("^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+
+    /** Compatibility reader: old documents may contain only a subset of controls. */
+    fun controlsFromRemote(data: Map<String, Any?>): PolicyControls? {
+        val raw = data["controls"] as? Map<*, *> ?: return null
+        val defaults = PolicyControls()
+        val host = (raw["dnsHost"] as? String)?.takeIf { LEGACY_HOST_REGEX.matches(it) } ?: defaults.dnsHost
+        return PolicyControls(
+            supervised = raw["supervised"] as? Boolean ?: defaults.supervised,
+            cameraBlocked = raw["cameraBlocked"] as? Boolean ?: defaults.cameraBlocked,
+            installBlocked = raw["installBlocked"] as? Boolean ?: defaults.installBlocked,
+            mandatoryDns = raw["mandatoryDns"] as? Boolean ?: defaults.mandatoryDns,
+            dnsHost = host,
+            lockdown = raw["lockdown"] as? Boolean ?: defaults.lockdown
+        )
+    }
 
     private fun appToMap(a: AppPolicy): Map<String, Any?> = mapOf(
         "pkg" to a.packageName,
