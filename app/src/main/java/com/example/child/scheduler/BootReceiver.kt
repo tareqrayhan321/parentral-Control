@@ -22,6 +22,13 @@ class BootReceiver : BroadcastReceiver() {
         ) {
             Log.i(TAG, "Device boot completed. Re-arming schedule alarms and re-evaluating policy.")
 
+            // Re-arm habit reminder alarms (independent of child-mode setup)
+            try {
+                com.example.core.habits.HabitAlarmScheduler.rescheduleAll(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error re-arming habit alarms", e)
+            }
+
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {

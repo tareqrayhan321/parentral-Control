@@ -667,30 +667,3 @@ fun AddChildDialog(
         }
     }
 }
-
-/** Habits tab: content will be defined later. */
-@Composable
-fun HabitsTabContent() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(HomeBg)
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(88.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFDDEBF7)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.TaskAlt, contentDescription = null, tint = Color(0xFF0B3954), modifier = Modifier.size(44.dp))
-        }
-        Spacer(modifier = Modifier.height(20.dp))
-        Text("Habits", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = InkDark)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Coming soon", fontSize = 15.sp, color = InkSoft, textAlign = TextAlign.Center)
-    }
-}

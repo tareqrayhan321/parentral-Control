@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Habit reminder alarms: full-screen alert that wakes the screen -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Status notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -91,6 +95,20 @@
         <!-- Exact Schedule Alarm Receiver -->
         <receiver
             android:name=".child.scheduler.ScheduleAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Habit reminder alarm receiver + full-screen alert -->
+        <receiver
+            android:name=".core.habits.HabitAlarmReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".core.habits.HabitAlarmActivity"
+            android:theme="@style/Theme.MyApplication"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:exported="false" />
 
         <!-- Midnight Usage Reset Receiver -->

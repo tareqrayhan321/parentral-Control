@@ -166,7 +166,7 @@ fun ParentDashboardScreen(
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
             // Home draws its own gradient header; other tabs get a simple title bar (no "Child Mode" button).
-            if (currentTab != ParentTab.DASHBOARD) {
+            if (currentTab != ParentTab.DASHBOARD && currentTab != ParentTab.HABITS) {
                 TopAppBar(
                     title = {
                         Text(

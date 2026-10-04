@@ -63,7 +63,7 @@ fun FloatingNavBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
+            .padding(start = 14.dp, end = 14.dp, bottom = 3.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
@@ -73,7 +73,7 @@ fun FloatingNavBar(
                 .clip(shape)
                 .background(Color.White.copy(alpha = 0.62f))
                 .border(1.dp, Color.White.copy(alpha = 0.75f), shape)
-                .padding(6.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
