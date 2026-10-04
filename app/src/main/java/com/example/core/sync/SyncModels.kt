@@ -2,13 +2,18 @@ package com.example.core.sync
 
 import com.example.core.apps.InstalledApp
 import com.example.core.model.Policy
+import com.example.core.policy.PolicyControls
 import org.json.JSONObject
 
 data class ParentAccount(val uid: String, val email: String?)
 data class PairingToken(val token: String, val parentUid: String, val expiresAtEpochMs: Long)
 data class ClaimResult(val parentUid: String, val childUid: String)
 data class RemoteDevice(val deviceId: String, val deviceName: String, val appVersion: String)
-data class RemotePolicy(val version: Int, val policy: Policy)
+data class RemotePolicy(
+    val version: Int,
+    val policy: Policy,
+    val controls: PolicyControls? = null
+)
 data class RemoteHeartbeat(
     val lastSeenEpochMs: Long?,
     val ackedPolicyVersion: Int,

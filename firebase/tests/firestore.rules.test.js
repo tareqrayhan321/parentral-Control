@@ -27,7 +27,21 @@ async function pairedSetup() {
   await openPairing();
   await assertSucceeds(claimBatch(childCtx()));
 }
-const policyV = (v) => ({ version: v, updatedAt: serverTimestamp(), apps: {}, schedules: {} });
+const controlsV = () => ({
+  supervised: true,
+  cameraBlocked: false,
+  installBlocked: true,
+  mandatoryDns: true,
+  dnsHost: 'family-filter-dns.cleanbrowsing.org',
+  lockdown: false
+});
+const policyV = (v, controls) => ({
+  version: v,
+  updatedAt: serverTimestamp(),
+  apps: {},
+  schedules: {},
+  ...(controls === undefined ? {} : { controls })
+});
 
 before(async () => {
   env = await initializeTestEnvironment({
@@ -97,6 +111,21 @@ describe('policy', () => {
     await assertFails(updateDoc(ref(parentCtx()), policyV(1)));   // same version
     await assertFails(updateDoc(ref(parentCtx()), policyV(5)));   // skipped version
     await assertSucceeds(updateDoc(ref(parentCtx()), policyV(2)));
+  });
+  it('parent may send a complete valid controls bundle with policy', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    await assertSucceeds(setDoc(ref(parentCtx()), policyV(1, controlsV())));
+    await assertSucceeds(updateDoc(ref(parentCtx()), policyV(2, { ...controlsV(), lockdown: true })));
+  });
+  it('rejects unknown keys and incorrectly typed policy controls', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), ownerUid: PARENT })));
+    await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), cameraBlocked: 'true' })));
+  });
+  it('rejects invalid DNS hosts in policy controls', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), dnsHost: 'bad host/name' })));
+    await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), dnsHost: 'x'.repeat(254) })));
   });
   it('child can read but never write policy', async () => {
     const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');

@@ -11,6 +11,7 @@ import com.example.core.database.repository.PolicyRepository
 import com.example.core.database.repository.RoomPolicyRepository
 import com.example.core.model.RestrictionDecision
 import com.example.core.model.TimeOfDay
+import com.example.core.policy.ControlsStore
 import com.example.core.policy.DefaultPolicyEngine
 import com.example.core.policy.PolicyEngine
 import com.example.core.usage.AndroidUsageRepository
@@ -41,7 +42,8 @@ class DefaultPolicyEnforcementManager(
     private val policyRepository: PolicyRepository = RoomPolicyRepository(ChildDatabase.getInstance(context)),
     private val usageRepository: UsageRepository = AndroidUsageRepository(context, policyRepository),
     private val deviceOwnerManager: DeviceOwnerManager = AndroidDeviceOwnerManager(context),
-    private val policyEngine: PolicyEngine = DefaultPolicyEngine()
+    private val policyEngine: PolicyEngine = DefaultPolicyEngine(),
+    private val controlsStore: ControlsStore = ControlsStore(context)
 ) : PolicyEnforcementManager {
 
     override suspend fun initializeDeviceEnforcement() = withContext(Dispatchers.IO) {
@@ -78,8 +80,12 @@ class DefaultPolicyEnforcementManager(
             todayUsageMap = todayUsageMap
         )
 
-        val packagesToSuspend = policyEngine.findPackagesToSuspend(decisions).toSet()
         val allTrackedPackages = policy.apps.keys
+        val packagesToSuspend = if (controlsStore.get().lockdown) {
+            allTrackedPackages
+        } else {
+            policyEngine.findPackagesToSuspend(decisions).toSet()
+        }
 
         // Apply suspension via DevicePolicyManager
         if (deviceOwnerManager.isDeviceOwner()) {

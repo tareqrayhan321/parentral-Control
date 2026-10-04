@@ -5,6 +5,7 @@ import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
 import com.example.core.model.TimeOfDay
+import com.example.core.policy.PolicyControls
 import java.time.DayOfWeek
 
 /**
@@ -15,10 +16,43 @@ import java.time.DayOfWeek
  */
 object PolicySerializer {
 
-    fun toRemoteMap(policy: Policy): Map<String, Any?> = mapOf(
-        "apps" to policy.apps.values.map { appToMap(it) },
-        "schedules" to policy.schedules.values.map { scheduleToMap(it) }
+    fun toRemoteMap(policy: Policy, controls: PolicyControls? = null): Map<String, Any?> {
+        val result = linkedMapOf<String, Any?>(
+            "apps" to policy.apps.values.map { appToMap(it) },
+            "schedules" to policy.schedules.values.map { scheduleToMap(it) }
+        )
+        controls?.let { result["controls"] = controlsToRemoteMap(it) }
+        return result
+    }
+
+    fun controlsToRemoteMap(controls: PolicyControls): Map<String, Any?> = mapOf(
+        "supervised" to controls.supervised,
+        "cameraBlocked" to controls.cameraBlocked,
+        "installBlocked" to controls.installBlocked,
+        "mandatoryDns" to controls.mandatoryDns,
+        "dnsHost" to controls.dnsHost,
+        "lockdown" to controls.lockdown
     )
+
+    /** Missing controls are valid for old policy documents; malformed present controls are ignored. */
+    fun controlsFromRemoteMap(data: Map<String, Any?>): PolicyControls? {
+        val raw = data["controls"] as? Map<*, *> ?: return null
+        val expectedKeys = setOf("supervised", "cameraBlocked", "installBlocked", "mandatoryDns", "dnsHost", "lockdown")
+        val keys = raw.keys.filterIsInstance<String>().toSet()
+        if (keys != expectedKeys) return null
+
+        val supervised = raw["supervised"] as? Boolean ?: return null
+        val cameraBlocked = raw["cameraBlocked"] as? Boolean ?: return null
+        val installBlocked = raw["installBlocked"] as? Boolean ?: return null
+        val mandatoryDns = raw["mandatoryDns"] as? Boolean ?: return null
+        val dnsHost = raw["dnsHost"] as? String ?: return null
+        val lockdown = raw["lockdown"] as? Boolean ?: return null
+        if (!DNS_HOST_REGEX.matches(dnsHost)) return null
+
+        return PolicyControls(supervised, cameraBlocked, installBlocked, mandatoryDns, dnsHost, lockdown)
+    }
+
+    private val DNS_HOST_REGEX = Regex("^[A-Za-z0-9.-]{1,253}$")
 
     private fun appToMap(a: AppPolicy): Map<String, Any?> = mapOf(
         "pkg" to a.packageName,

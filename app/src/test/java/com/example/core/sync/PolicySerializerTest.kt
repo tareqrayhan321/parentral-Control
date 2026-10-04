@@ -5,7 +5,9 @@ import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
 import com.example.core.model.TimeOfDay
+import com.example.core.policy.PolicyControls
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
@@ -33,6 +35,34 @@ class PolicySerializerTest {
         assertEquals(7, back.version)
         assertEquals(policy.apps, back.apps)
         assertEquals(policy.schedules, back.schedules)
+    }
+
+    @Test
+    fun `controls round trip with policy and preserve every field`() {
+        val controls = PolicyControls(
+            supervised = false,
+            cameraBlocked = true,
+            installBlocked = false,
+            mandatoryDns = true,
+            dnsHost = "dns.example.org",
+            lockdown = true
+        )
+        val remote = PolicySerializer.toRemoteMap(policy, controls)
+        assertEquals(controls, PolicySerializer.controlsFromRemoteMap(remote))
+        assertEquals(controls, PolicySerializer.controlsFromRemoteMap(mapOf(
+            "controls" to PolicySerializer.controlsToRemoteMap(controls)
+        )))
+    }
+
+    @Test
+    fun `missing or malformed controls are ignored for older and bad documents`() {
+        assertNull(PolicySerializer.controlsFromRemoteMap(emptyMap()))
+        assertNull(PolicySerializer.controlsFromRemoteMap(mapOf("controls" to mapOf("supervised" to true))))
+        assertNull(PolicySerializer.controlsFromRemoteMap(mapOf(
+            "controls" to PolicySerializer.controlsToRemoteMap(PolicyControls()).toMutableMap().apply {
+                put("dnsHost", "bad host")
+            }
+        )))
     }
 
     @Test

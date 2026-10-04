@@ -8,6 +8,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import com.example.core.apps.InstalledApp
 import com.example.core.model.Policy
+import com.example.core.policy.PolicyControls
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
@@ -100,11 +101,14 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         PairingToken(token, parent.uid, expiresAt)
     }
 
-    override suspend fun pushPolicy(deviceId: String, policy: Policy): Result<Int> = runCatching {
+    override suspend fun pushPolicy(deviceId: String, policy: Policy): Result<Int> =
+        pushPolicy(deviceId, policy, PolicyControls())
+
+    override suspend fun pushPolicy(deviceId: String, policy: Policy, controls: PolicyControls): Result<Int> = runCatching {
         if (!isAvailable) throw notConfigured()
         val parent = currentParent() ?: error("Sign in with Google first.")
         val ref = deviceRef(parent.uid, deviceId).collection("policy").document("current")
-        val payload = PolicySerializer.toRemoteMap(policy)
+        val payload = PolicySerializer.toRemoteMap(policy, controls)
 
         // Remote version must be exactly previous + 1 (enforced by Firestore rules).
         db.runTransaction { tx ->
@@ -209,7 +213,11 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
             if (!s.exists() || data == null) null else {
                 val version = (s.getLong("version") ?: 0L).toInt()
                 val updated = s.getTimestamp("updatedAt")?.toDate()?.time ?: System.currentTimeMillis()
-                RemotePolicy(version, PolicySerializer.fromRemoteMap(version, updated, data))
+                RemotePolicy(
+                    version = version,
+                    policy = PolicySerializer.fromRemoteMap(version, updated, data),
+                    controls = PolicySerializer.controlsFromRemoteMap(data)
+                )
             }
         }
 

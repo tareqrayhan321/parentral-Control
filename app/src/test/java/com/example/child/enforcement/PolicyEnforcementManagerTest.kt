@@ -9,7 +9,9 @@ import com.example.core.model.AppPolicy
 import com.example.core.model.Policy
 import com.example.core.model.RestrictionDecision
 import com.example.core.model.RestrictionMode
+import com.example.core.policy.ControlsStore
 import com.example.core.policy.DefaultPolicyEngine
+import com.example.core.policy.PolicyControls
 import com.example.core.usage.UsageRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -27,11 +29,15 @@ class PolicyEnforcementManagerTest {
     private lateinit var policyRepository: RoomPolicyRepository
     private lateinit var fakeDeviceOwnerManager: FakeDeviceOwnerManager
     private lateinit var fakeUsageRepository: FakeUsageRepository
+    private lateinit var controlsStore: ControlsStore
     private lateinit var enforcementManager: PolicyEnforcementManager
 
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSharedPreferences(ControlsStore.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        controlsStore = ControlsStore(context)
         database = Room.inMemoryDatabaseBuilder(context, ChildDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -44,7 +50,8 @@ class PolicyEnforcementManagerTest {
             policyRepository = policyRepository,
             usageRepository = fakeUsageRepository,
             deviceOwnerManager = fakeDeviceOwnerManager,
-            policyEngine = DefaultPolicyEngine()
+            policyEngine = DefaultPolicyEngine(),
+            controlsStore = controlsStore
         )
     }
 
@@ -104,6 +111,26 @@ class PolicyEnforcementManagerTest {
 
         val chessEntity = database.appPolicyDao().getPolicyForPackage("com.chess")
         assertTrue(chessEntity?.isSuspended == false)
+    }
+
+    @Test
+    fun `instant lockdown suspends all tracked apps without rewriting policy decisions`() = runTest {
+        val allowedA = AppPolicy("com.example.allowed.a", "Allowed A", RestrictionMode.ALLOWED)
+        val allowedB = AppPolicy("com.example.allowed.b", "Allowed B", RestrictionMode.ALLOWED)
+        policyRepository.applyNewPolicyAtomic(
+            Policy(
+                version = 1,
+                updatedAtEpochMs = System.currentTimeMillis(),
+                apps = listOf(allowedA, allowedB).associateBy { it.packageName }
+            )
+        )
+        controlsStore.set(PolicyControls(lockdown = true))
+
+        val decisions = enforcementManager.enforceCurrentPolicy()
+
+        assertEquals(RestrictionDecision.Allowed, decisions[allowedA.packageName])
+        assertEquals(RestrictionDecision.Allowed, decisions[allowedB.packageName])
+        assertEquals(setOf(allowedA.packageName, allowedB.packageName), fakeDeviceOwnerManager.currentlySuspended)
     }
 
     private class FakeDeviceOwnerManager : DeviceOwnerManager {

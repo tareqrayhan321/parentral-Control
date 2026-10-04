@@ -21,6 +21,20 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/families/$(pid)/devices/$(cid));
     }
 
+    function hasValidPolicyControls(data) {
+      return !('controls' in data)
+        || (data.controls is map
+          && data.controls.keys().hasOnly(['supervised', 'cameraBlocked', 'installBlocked', 'mandatoryDns', 'dnsHost', 'lockdown'])
+          && data.controls.keys().hasAll(['supervised', 'cameraBlocked', 'installBlocked', 'mandatoryDns', 'dnsHost', 'lockdown'])
+          && data.controls.supervised is bool
+          && data.controls.cameraBlocked is bool
+          && data.controls.installBlocked is bool
+          && data.controls.mandatoryDns is bool
+          && data.controls.lockdown is bool
+          && data.controls.dnsHost is string
+          && data.controls.dnsHost.matches('[A-Za-z0-9.-]{1,253}'));
+    }
+
     // ---- Pairing tokens -------------------------------------------------------------
     // Token = 128-bit random doc id carried in the QR. Knowing the id is the capability,
     // so `list` is denied (no enumeration) and ids must be long.
@@ -85,13 +99,15 @@ service cloud.firestore {
           allow create: if isParent(pid) && name == 'current'
             && exists(/databases/$(database)/documents/families/$(pid)/devices/$(cid))
             && request.resource.data.version == 1
-            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules'])
+            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules', 'controls'])
+            && hasValidPolicyControls(request.resource.data)
             && request.resource.data.apps.size() <= 500
             && request.resource.data.schedules.size() <= 50;
 
           allow update: if isParent(pid) && name == 'current'
             && request.resource.data.version == resource.data.version + 1
-            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules'])
+            && request.resource.data.keys().hasOnly(['version', 'updatedAt', 'apps', 'schedules', 'controls'])
+            && hasValidPolicyControls(request.resource.data)
             && request.resource.data.apps.size() <= 500
             && request.resource.data.schedules.size() <= 50;
         }
