@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
                 val audits by viewModel.recentAudits.collectAsState()
                 val parentAccountLabel by viewModel.parentAccountLabel.collectAsState()
                 val parentDisplayName by viewModel.parentDisplayName.collectAsState()
+                val parentPhotoUrl by viewModel.parentPhotoUrl.collectAsState()
                 val childSyncStatus by viewModel.childSyncStatus.collectAsState()
                 val childStatusLabel by viewModel.childStatusLabel.collectAsState()
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
                                     audits = audits,
                                     parentAccountLabel = parentAccountLabel,
                                     parentName = parentDisplayName,
+                                    parentPhotoUrl = parentPhotoUrl,
                                     childStatusLabel = childStatusLabel,
                                     onSignIn = { viewModel.signInParent(this@MainActivity) },
                                     onSignOut = { viewModel.signOutParent() },

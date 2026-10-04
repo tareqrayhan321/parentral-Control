@@ -5,7 +5,13 @@ import com.example.core.model.Policy
 import com.example.core.policy.PolicyControls
 import org.json.JSONObject
 
-data class ParentAccount(val uid: String, val email: String?, val displayName: String? = null)
+data class ParentAccount(
+    val uid: String,
+    val email: String?,
+    val displayName: String? = null,
+    /** Google profile photo (https URL) or null when the account has none. */
+    val photoUrl: String? = null
+)
 data class PairingToken(val token: String, val parentUid: String, val expiresAtEpochMs: Long)
 data class ClaimResult(val parentUid: String, val childUid: String)
 data class RemoteDevice(val deviceId: String, val deviceName: String, val appVersion: String)

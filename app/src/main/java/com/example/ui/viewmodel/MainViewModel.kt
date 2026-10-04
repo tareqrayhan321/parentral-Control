@@ -201,6 +201,9 @@ class MainViewModel @JvmOverloads constructor(
     private val _parentDisplayName = MutableStateFlow(syncGateway.currentParent()?.displayName)
     val parentDisplayName: StateFlow<String?> = _parentDisplayName.asStateFlow()
 
+    private val _parentPhotoUrl = MutableStateFlow(syncGateway.currentParent()?.photoUrl)
+    val parentPhotoUrl: StateFlow<String?> = _parentPhotoUrl.asStateFlow()
+
     private val clock = flow {
         while (true) {
             emit(System.currentTimeMillis())
@@ -450,6 +453,7 @@ class MainViewModel @JvmOverloads constructor(
                 .onSuccess { account ->
                     _parentAccountLabel.value = account.email ?: account.uid
                     _parentDisplayName.value = account.displayName
+                    _parentPhotoUrl.value = account.photoUrl
                     // Signed in: now the parent role is confirmed (saves role, starts sync, makes QR).
                     selectDeviceRole(AppMode.PARENT)
                     _statusMessage.value = "Signed in as ${account.email ?: account.uid}."
@@ -467,6 +471,8 @@ class MainViewModel @JvmOverloads constructor(
             syncGateway.signOut()
             _parentAccountLabel.value = null
             _parentDisplayName.value = null
+            _parentPhotoUrl.value = null
+            com.example.core.profile.ProfilePhotoLoader.clearCache(getApplication())
             _deviceInfo.value = null
             _childHeartbeat.value = null
             _qrBitmap.value = null
@@ -856,6 +862,7 @@ class MainViewModel @JvmOverloads constructor(
                 .onSuccess { account ->
                     _parentAccountLabel.value = account.email ?: account.uid
                     _parentDisplayName.value = account.displayName
+                    _parentPhotoUrl.value = account.photoUrl
                     _appMode.value = AppMode.ROLE_SELECTION
                     _statusMessage.value = "Signed in as ${account.email ?: account.uid}."
                 }
@@ -882,6 +889,9 @@ class MainViewModel @JvmOverloads constructor(
                     parentSyncJob?.cancel()
                     syncGateway.signOut()
                     _parentAccountLabel.value = null
+                    _parentDisplayName.value = null
+                    _parentPhotoUrl.value = null
+                    com.example.core.profile.ProfilePhotoLoader.clearCache(getApplication())
                     _childHeartbeat.value = null
                     _qrBitmap.value = null
                     _qrPayloadJson.value = ""

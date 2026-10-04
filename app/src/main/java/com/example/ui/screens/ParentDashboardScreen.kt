@@ -151,6 +151,7 @@ fun ParentDashboardScreen(
     onDeleteSchedule: (String) -> Unit,
     parentAccountLabel: String? = null,
     parentName: String? = null,
+    parentPhotoUrl: String? = null,
     childStatusLabel: String = "",
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
@@ -221,6 +222,7 @@ fun ParentDashboardScreen(
                 ParentTab.DASHBOARD -> ParentHomeTab(
                     parentName = parentName,
                     parentEmail = parentAccountLabel,
+                    parentPhotoUrl = parentPhotoUrl,
                     deviceInfo = deviceInfo,
                     childStatusLabel = childStatusLabel,
                     policy = policy,
@@ -264,6 +266,7 @@ fun ParentDashboardScreen(
                 )
                 ParentTab.PAIRING -> PairingTabContent(
                     parentAccountLabel = parentAccountLabel,
+                    parentPhotoUrl = parentPhotoUrl,
                     childStatusLabel = childStatusLabel,
                     onSignIn = onSignIn,
                     onSignOut = onSignOut,
@@ -1407,6 +1410,7 @@ private fun SchedulesTabContent(
 @Composable
 private fun PairingTabContent(
     parentAccountLabel: String?,
+    parentPhotoUrl: String? = null,
     childStatusLabel: String,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
@@ -1478,6 +1482,12 @@ private fun PairingTabContent(
                             Text("Sign in with Google")
                         }
                     } else {
+                        com.example.ui.components.ProfileAvatar(
+                            photoUrl = parentPhotoUrl,
+                            name = parentAccountLabel,
+                            size = 64.dp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Signed in as",
                             style = MaterialTheme.typography.labelSmall,

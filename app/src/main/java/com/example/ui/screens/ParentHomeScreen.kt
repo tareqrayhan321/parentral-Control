@@ -108,6 +108,7 @@ private fun formatMinutes(total: Int): String =
 fun ParentHomeTab(
     parentName: String?,
     parentEmail: String?,
+    parentPhotoUrl: String? = null,
     deviceInfo: ChildDevice?,
     childStatusLabel: String,
     policy: Policy,
@@ -161,20 +162,11 @@ fun ParentHomeTab(
                 .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 100.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = displayName.first().uppercase(),
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            com.example.ui.components.ProfileAvatar(
+                photoUrl = parentPhotoUrl,
+                name = displayName,
+                size = 52.dp
+            )
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(greeting(), color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
