@@ -30,6 +30,12 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
+    create("ciDebug") {
+      storeFile = file("ci-debug.jks")
+      storePassword = "android"
+      keyAlias = "ci-debug"
+      keyPassword = "android"
+    }
   }
 
   buildTypes {
@@ -39,9 +45,10 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    // Use the Android Gradle Plugin's automatically generated debug keystore.
-    // A checked-in or locally generated debug.keystore is not required for CI.
-    debug { }
+    debug {
+      // Fixed key: the SHA-1 stays the same on every CI build, which Google Sign-In requires.
+      signingConfig = signingConfigs.getByName("ciDebug")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
