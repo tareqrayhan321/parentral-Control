@@ -26,7 +26,7 @@ import com.example.ui.screens.ChildDashboardScreen
 import com.example.ui.screens.DeviceProtectionSetupDialog
 import com.example.ui.screens.DeviceRoleSelectionScreen
 import com.example.ui.screens.ParentDashboardScreen
-import com.example.ui.screens.ParentLoginScreen
+import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppMode
 import com.example.ui.viewmodel.MainViewModel
@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 val showConnectDialog by viewModel.showConnectDialog.collectAsState()
                 val showProtectionDialog by viewModel.showProtectionDialog.collectAsState()
                 val statusMessage by viewModel.statusMessage.collectAsState()
+                val isSigningIn by viewModel.isSigningIn.collectAsState()
 
                 val snackbarHostState = remember { SnackbarHostState() }
 
@@ -87,9 +88,7 @@ class MainActivity : ComponentActivity() {
                 BackHandler(enabled = appMode == AppMode.PARENT) {
                     viewModel.switchToChildMode()
                 }
-                BackHandler(enabled = appMode == AppMode.PARENT_LOGIN) {
-                    viewModel.openRoleSelection()
-                }
+
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -106,10 +105,10 @@ class MainActivity : ComponentActivity() {
                                     onRoleSelected = { viewModel.chooseRole(it) }
                                 )
                             }
-                            AppMode.PARENT_LOGIN -> {
-                                ParentLoginScreen(
-                                    onSignIn = { viewModel.signInParent(this@MainActivity) },
-                                    onBack = { viewModel.openRoleSelection() }
+                            AppMode.WELCOME -> {
+                                WelcomeScreen(
+                                    isSigningIn = isSigningIn,
+                                    onGoogleSignIn = { viewModel.signInFromWelcome(this@MainActivity) }
                                 )
                             }
                             AppMode.CHILD -> {
