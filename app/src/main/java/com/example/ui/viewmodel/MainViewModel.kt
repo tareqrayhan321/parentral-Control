@@ -63,6 +63,7 @@ import java.time.LocalDate
 
 enum class AppMode {
     ROLE_SELECTION,
+    PARENT_LOGIN,
     CHILD,
     PARENT
 }
@@ -101,9 +102,11 @@ class MainViewModel @JvmOverloads constructor(
 
     private val _appMode = MutableStateFlow(
         when (rolePrefs.getString("device_role", null)) {
-            "PARENT" -> AppMode.PARENT
+            // Parent role is only usable while a Google account is signed in.
+            "PARENT" -> if (syncGateway.currentParent() != null) AppMode.PARENT else AppMode.PARENT_LOGIN
             "CHILD" -> AppMode.CHILD
-            else -> AppMode.CHILD
+            // First launch: ask "Parent or Child?" before anything else.
+            else -> AppMode.ROLE_SELECTION
         }
     )
     val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
@@ -441,9 +444,9 @@ class MainViewModel @JvmOverloads constructor(
             syncGateway.signInParentWithGoogle(activity)
                 .onSuccess { account ->
                     _parentAccountLabel.value = account.email ?: account.uid
+                    // Signed in: now the parent role is confirmed (saves role, starts sync, makes QR).
+                    selectDeviceRole(AppMode.PARENT)
                     _statusMessage.value = "Signed in as ${account.email ?: account.uid}."
-                    startParentObservers()
-                    generatePairingQr()
                 }
                 .onFailure { e ->
                     Log.e("MainViewModel", "Google sign-in failed", e)
@@ -461,6 +464,8 @@ class MainViewModel @JvmOverloads constructor(
             _childHeartbeat.value = null
             _qrBitmap.value = null
             _qrPayloadJson.value = ""
+            // Parent screens require Google sign-in, so go back to the login gate.
+            if (_appMode.value == AppMode.PARENT) _appMode.value = AppMode.PARENT_LOGIN
             _statusMessage.value = "Signed out."
         }
     }
@@ -829,6 +834,15 @@ class MainViewModel @JvmOverloads constructor(
                     _qrPayloadJson.value = ""
                     _statusMessage.value = e.message ?: "Could not create pairing QR."
                 }
+        }
+    }
+
+    /** Called from the first screen. Parent must connect Google first; child goes straight in. */
+    fun chooseRole(role: AppMode) {
+        if (role == AppMode.PARENT && syncGateway.currentParent() == null) {
+            _appMode.value = AppMode.PARENT_LOGIN
+        } else {
+            selectDeviceRole(role)
         }
     }
 
