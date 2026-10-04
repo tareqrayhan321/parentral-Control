@@ -63,7 +63,7 @@ import java.time.LocalDate
 
 enum class AppMode {
     ROLE_SELECTION,
-    PARENT_LOGIN,
+    WELCOME,
     CHILD,
     PARENT
 }
@@ -103,10 +103,11 @@ class MainViewModel @JvmOverloads constructor(
     private val _appMode = MutableStateFlow(
         when (rolePrefs.getString("device_role", null)) {
             // Parent role is only usable while a Google account is signed in.
-            "PARENT" -> if (syncGateway.currentParent() != null) AppMode.PARENT else AppMode.PARENT_LOGIN
+            "PARENT" -> if (syncGateway.currentParent() != null) AppMode.PARENT else AppMode.WELCOME
+            // Child phones never keep a Google login (they pair as anonymous users), so go straight in.
             "CHILD" -> AppMode.CHILD
-            // First launch: ask "Parent or Child?" before anything else.
-            else -> AppMode.ROLE_SELECTION
+            // First launch: Google sign-in screen first, then "Who's going to use this device?".
+            else -> if (syncGateway.currentParent() != null) AppMode.ROLE_SELECTION else AppMode.WELCOME
         }
     )
     val appMode: StateFlow<AppMode> = _appMode.asStateFlow()
@@ -465,7 +466,7 @@ class MainViewModel @JvmOverloads constructor(
             _qrBitmap.value = null
             _qrPayloadJson.value = ""
             // Parent screens require Google sign-in, so go back to the login gate.
-            if (_appMode.value == AppMode.PARENT) _appMode.value = AppMode.PARENT_LOGIN
+            if (_appMode.value == AppMode.PARENT) _appMode.value = AppMode.WELCOME
             _statusMessage.value = "Signed out."
         }
     }
@@ -837,12 +838,49 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
-    /** Called from the first screen. Parent must connect Google first; child goes straight in. */
+    private val _isSigningIn = MutableStateFlow(false)
+    val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
+
+    /** First screen: Google sign-in. On success the user continues to the Parent/Kid choice. */
+    fun signInFromWelcome(activity: Activity) {
+        if (_isSigningIn.value) return
+        _isSigningIn.value = true
+        viewModelScope.launch {
+            syncGateway.signInParentWithGoogle(activity)
+                .onSuccess { account ->
+                    _parentAccountLabel.value = account.email ?: account.uid
+                    _appMode.value = AppMode.ROLE_SELECTION
+                    _statusMessage.value = "Signed in as ${account.email ?: account.uid}."
+                }
+                .onFailure { e ->
+                    Log.e("MainViewModel", "Google sign-in failed", e)
+                    _statusMessage.value = "Google sign-in failed: ${e.message}"
+                }
+            _isSigningIn.value = false
+        }
+    }
+
+    /**
+     * Second screen: Parent or Kid.
+     * Parent needs a Google login. Kid: the Google login only proved who is setting the phone up; it is
+     * removed from this phone, because the backend identifies a child phone as an ANONYMOUS user.
+     */
     fun chooseRole(role: AppMode) {
-        if (role == AppMode.PARENT && syncGateway.currentParent() == null) {
-            _appMode.value = AppMode.PARENT_LOGIN
+        if (role == AppMode.PARENT) {
+            if (syncGateway.currentParent() == null) _appMode.value = AppMode.WELCOME
+            else selectDeviceRole(AppMode.PARENT)
         } else {
-            selectDeviceRole(role)
+            viewModelScope.launch {
+                if (syncGateway.currentParent() != null) {
+                    parentSyncJob?.cancel()
+                    syncGateway.signOut()
+                    _parentAccountLabel.value = null
+                    _childHeartbeat.value = null
+                    _qrBitmap.value = null
+                    _qrPayloadJson.value = ""
+                }
+                selectDeviceRole(AppMode.CHILD)
+            }
         }
     }
 
