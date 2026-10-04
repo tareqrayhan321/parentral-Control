@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
                 val qrPayloadJson by viewModel.qrPayloadJson.collectAsState()
                 val audits by viewModel.recentAudits.collectAsState()
                 val parentAccountLabel by viewModel.parentAccountLabel.collectAsState()
+                val childSyncStatus by viewModel.childSyncStatus.collectAsState()
                 val childStatusLabel by viewModel.childStatusLabel.collectAsState()
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
                 val connectedParentName by viewModel.connectedParentName.collectAsState()
@@ -113,7 +114,8 @@ class MainActivity : ComponentActivity() {
                                     onSwitchRoleRequested = { viewModel.openRoleSelection() },
                                     onOpenProtectionSetup = { viewModel.openProtectionSetup() },
                                     onOpenParentLogin = { viewModel.requestSwitchToParentMode() },
-                                    onRefreshUsage = { viewModel.refreshUsage() }
+                                    onRefreshUsage = { viewModel.refreshUsage() },
+                                    syncStatus = childSyncStatus
                                 )
                             }
                             AppMode.PARENT -> {
