@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bedtime
@@ -147,6 +149,7 @@ fun ParentDashboardScreen(
     onAddSchedule: (Schedule) -> Unit,
     onDeleteSchedule: (String) -> Unit,
     parentAccountLabel: String? = null,
+    parentName: String? = null,
     childStatusLabel: String = "",
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
@@ -159,58 +162,44 @@ fun ParentDashboardScreen(
     var showAddScheduleDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = "Parent Control",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+            // Home draws its own gradient header; other tabs get a simple title bar (no "Child Mode" button).
+            if (currentTab != ParentTab.DASHBOARD) {
+                TopAppBar(
+                    title = {
                         Text(
-                            text = "Parent Dashboard",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
+                            text = when (currentTab) {
+                                ParentTab.APPS -> "Apps"
+                                ParentTab.SCHEDULES -> "Schedules"
+                                ParentTab.PAIRING -> "Account & pairing"
+                                ParentTab.AUDIT -> "Activity"
+                                else -> ""
+                            },
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onSwitchRoleRequested,
-                        modifier = Modifier.testTag("switch_role_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = "Switch Role")
-                    }
-                    OutlinedButton(
-                        onClick = onSwitchToChildMode,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .testTag("switch_to_child_mode_button"),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ExitToApp,
-                            contentDescription = "Exit to Child Mode",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Child Mode", fontSize = 13.sp)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { onSelectTab(ParentTab.DASHBOARD) }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
         },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
                     selected = currentTab == ParentTab.DASHBOARD,
                     onClick = { onSelectTab(ParentTab.DASHBOARD) },
-                    icon = { Icon(Icons.Default.Security, contentDescription = "Dashboard") },
-                    label = { Text("Overview") },
+                    icon = { Icon(Icons.Default.Security, contentDescription = "Home") },
+                    label = { Text("Home") },
                     modifier = Modifier.testTag("tab_overview")
                 )
                 NavigationBarItem(
@@ -228,17 +217,10 @@ fun ParentDashboardScreen(
                     modifier = Modifier.testTag("tab_schedules")
                 )
                 NavigationBarItem(
-                    selected = currentTab == ParentTab.PAIRING,
-                    onClick = { onSelectTab(ParentTab.PAIRING) },
-                    icon = { Icon(Icons.Default.QrCode, contentDescription = "Pairing") },
-                    label = { Text("Pairing") },
-                    modifier = Modifier.testTag("tab_pairing")
-                )
-                NavigationBarItem(
                     selected = currentTab == ParentTab.AUDIT,
                     onClick = { onSelectTab(ParentTab.AUDIT) },
-                    icon = { Icon(Icons.Default.History, contentDescription = "Audit") },
-                    label = { Text("Audit") },
+                    icon = { Icon(Icons.Default.History, contentDescription = "Activity") },
+                    label = { Text("Activity") },
                     modifier = Modifier.testTag("tab_audit")
                 )
             }
@@ -260,8 +242,13 @@ fun ParentDashboardScreen(
                 .padding(innerPadding)
         ) {
             when (currentTab) {
-                ParentTab.DASHBOARD -> OverviewTabContent(
+                ParentTab.DASHBOARD -> ParentHomeTab(
+                    parentName = parentName,
+                    parentEmail = parentAccountLabel,
                     deviceInfo = deviceInfo,
+                    childStatusLabel = childStatusLabel,
+                    policy = policy,
+                    todayUsage = todayUsage,
                     isDeviceOwner = isDeviceOwner,
                     isSupervised = isSupervised,
                     isCameraBlocked = isCameraBlocked,
@@ -269,15 +256,20 @@ fun ParentDashboardScreen(
                     isMandatoryDnsEnforced = isMandatoryDnsEnforced,
                     enforcedDnsHost = enforcedDnsHost,
                     instantLockdown = instantLockdown,
-                    policy = policy,
-                    todayUsage = todayUsage,
-                    childStatusLabel = childStatusLabel,
-                    onPushSync = onPushSync,
+                    qrBitmap = qrBitmap,
+                    qrRemainingSeconds = qrRemainingSeconds,
                     onToggleSupervision = onToggleSupervision,
                     onToggleCameraRestriction = onToggleCameraRestriction,
                     onToggleInstallRestriction = onToggleInstallRestriction,
                     onSetMandatoryDns = onSetMandatoryDns,
-                    onToggleInstantLockdown = onToggleInstantLockdown
+                    onToggleInstantLockdown = onToggleInstantLockdown,
+                    onPushSync = onPushSync,
+                    onUnpairChild = onUnpairChild,
+                    onRegenerateQr = onRegenerateQr,
+                    onOpenAccount = { onSelectTab(ParentTab.PAIRING) },
+                    onChangePin = onChangePinRequested,
+                    onSwitchRole = onSwitchRoleRequested,
+                    onSignOut = onSignOut
                 )
                 ParentTab.APPS -> AppsTabContent(
                     policy = policy,

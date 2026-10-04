@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -30,6 +32,7 @@ import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppMode
 import com.example.ui.viewmodel.MainViewModel
+import com.example.ui.viewmodel.ParentTab
 import com.example.ui.viewmodel.PinDialogState
 
 class MainActivity : ComponentActivity() {
@@ -66,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 val qrPayloadJson by viewModel.qrPayloadJson.collectAsState()
                 val audits by viewModel.recentAudits.collectAsState()
                 val parentAccountLabel by viewModel.parentAccountLabel.collectAsState()
+                val parentDisplayName by viewModel.parentDisplayName.collectAsState()
                 val childSyncStatus by viewModel.childSyncStatus.collectAsState()
                 val childStatusLabel by viewModel.childStatusLabel.collectAsState()
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
@@ -84,9 +88,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // If in Parent Mode, back press returns safely to Child Mode
-                BackHandler(enabled = appMode == AppMode.PARENT) {
-                    viewModel.switchToChildMode()
+                // Parent Mode: back goes to Home first, then leaves the app (no Child Mode shortcut any more)
+                BackHandler(enabled = appMode == AppMode.PARENT && parentTab != ParentTab.DASHBOARD) {
+                    viewModel.selectParentTab(ParentTab.DASHBOARD)
                 }
 
 
@@ -97,7 +101,7 @@ class MainActivity : ComponentActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(innerPadding)
+                            .padding(if (appMode == AppMode.PARENT) PaddingValues(0.dp) else innerPadding)
                     ) {
                         when (appMode) {
                             AppMode.ROLE_SELECTION -> {
@@ -149,6 +153,7 @@ class MainActivity : ComponentActivity() {
                                     qrRemainingSeconds = qrRemainingSeconds,
                                     audits = audits,
                                     parentAccountLabel = parentAccountLabel,
+                                    parentName = parentDisplayName,
                                     childStatusLabel = childStatusLabel,
                                     onSignIn = { viewModel.signInParent(this@MainActivity) },
                                     onSignOut = { viewModel.signOutParent() },

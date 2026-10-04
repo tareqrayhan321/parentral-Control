@@ -47,7 +47,7 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
     override fun currentParent(): ParentAccount? {
         if (!isAvailable) return null
         val u = auth.currentUser ?: return null
-        return if (u.isAnonymous) null else ParentAccount(u.uid, u.email)
+        return if (u.isAnonymous) null else ParentAccount(u.uid, u.email, u.displayName)
     }
 
     override suspend fun signInParentWithGoogle(activity: Activity): Result<ParentAccount> = runCatching {
@@ -70,7 +70,7 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         val google = GoogleIdTokenCredential.createFrom(cred.data)
         val user = auth.signInWithCredential(GoogleAuthProvider.getCredential(google.idToken, null))
             .await().user ?: error("Sign-in returned no user.")
-        ParentAccount(user.uid, user.email)
+        ParentAccount(user.uid, user.email, user.displayName ?: google.displayName)
     }
 
     override suspend fun signOut() {
