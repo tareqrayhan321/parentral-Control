@@ -158,7 +158,7 @@ fun ParentHomeTab(
                 .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
                 .background(HeaderGradient)
                 .statusBarsPadding()
-                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 20.dp),
+                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 100.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -228,7 +228,7 @@ fun ParentHomeTab(
                 },
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             border = BorderStroke(1.dp, Color(0xFFE1E9E5))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
