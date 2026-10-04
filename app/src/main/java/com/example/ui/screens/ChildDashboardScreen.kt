@@ -86,7 +86,8 @@ fun ChildDashboardScreen(
     onSwitchRoleRequested: () -> Unit = {},
     onOpenProtectionSetup: () -> Unit = {},
     onOpenParentLogin: () -> Unit,
-    onRefreshUsage: () -> Unit
+    onRefreshUsage: () -> Unit,
+    syncStatus: String = ""
 ) {
     val totalMinutesUsed = todayUsage.values.sum()
     val totalHours = totalMinutesUsed / 60
@@ -299,6 +300,13 @@ fun ChildDashboardScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (syncStatus.isNotBlank()) {
+                                    Text(
+                                        text = syncStatus,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }

@@ -295,21 +295,49 @@ private fun PermissionItemCard(
 }
 
 private fun launchPermissionSetting(context: Context, permissionId: String) {
-    try {
-        val intent = when (permissionId) {
-            "admin" -> DeviceProtectionManager.createDeviceAdminIntent(context)
-            "usage" -> DeviceProtectionManager.createUsageAccessIntent(context)
-            "overlay" -> DeviceProtectionManager.createOverlayIntent(context)
-            "accessibility" -> DeviceProtectionManager.createAccessibilityIntent()
-            "battery" -> DeviceProtectionManager.createBatteryOptimizationIntent(context)
-            "notification" -> DeviceProtectionManager.createNotificationIntent(context)
-            else -> null
-        }
-        intent?.let {
-            it.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-            context.startActivity(it)
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("DeviceProtectionSetup", "Error opening settings for $permissionId", e)
+    val primary = when (permissionId) {
+        "admin" -> DeviceProtectionManager.createDeviceAdminIntent(context)
+        "usage" -> DeviceProtectionManager.createUsageAccessIntent(context)
+        "overlay" -> DeviceProtectionManager.createOverlayIntent(context)
+        "accessibility" -> DeviceProtectionManager.createAccessibilityIntent()
+        "battery" -> DeviceProtectionManager.createBatteryOptimizationIntent(context)
+        "notification" -> DeviceProtectionManager.createNotificationIntent(context)
+        else -> null
     }
+    // Many phone makers (ColorOS, MIUI, ...) reject the precise intent, so fall back step by step.
+    val fallbacks = buildList {
+        when (permissionId) {
+            "usage" -> add(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            "overlay" -> add(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            "battery" -> add(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
+        add(
+            android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${context.packageName}")
+            )
+        )
+    }
+
+    for (intent in listOfNotNull(primary) + fallbacks) {
+        try {
+            intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(intent)
+            if (permissionId == "accessibility") {
+                android.widget.Toast.makeText(
+                    context,
+                    "সেটিং ধূসর বা বন্ধ থাকলে: Settings → Apps → এই অ্যাপ → ⋮ মেনু → \"Allow restricted settings\" চাপুন, তারপর আবার চেষ্টা করুন।",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        } catch (e: Exception) {
+            android.util.Log.w("DeviceProtectionSetup", "Could not open $permissionId settings with ${intent.action}", e)
+        }
+    }
+    android.widget.Toast.makeText(
+        context,
+        "সেটিংস খোলা যায়নি। ফোনের Settings → Apps → এই অ্যাপ খুলে হাতে পারমিশন দিন।",
+        android.widget.Toast.LENGTH_LONG
+    ).show()
 }

@@ -98,6 +98,7 @@ import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
 import com.example.core.model.TimeOfDay
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
@@ -362,6 +363,8 @@ private fun OverviewTabContent(
                 statusLabel = childStatusLabel,
                 policy = policy,
                 todayUsage = todayUsage,
+                instantLockdown = instantLockdown,
+                onToggleInstantLockdown = onToggleInstantLockdown,
                 onPushSync = onPushSync
             )
         }
@@ -789,6 +792,8 @@ private fun ChildSummaryCard(
     statusLabel: String,
     policy: Policy,
     todayUsage: Map<String, Int>,
+    instantLockdown: Boolean,
+    onToggleInstantLockdown: (Boolean) -> Unit,
     onPushSync: () -> Unit
 ) {
     val totalMinutes = todayUsage.values.sum()
@@ -884,17 +889,39 @@ private fun ChildSummaryCard(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onPushSync,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("push_sync_button"),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("নিয়ম সন্তানের ফোনে পাঠান", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onToggleInstantLockdown(!instantLockdown) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("lockdown_button"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(
+                            if (instantLockdown) Icons.Default.LockOpen else Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (instantLockdown) "লক খুলুন" else "এখনই লক", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onPushSync,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("push_sync_button"),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("নিয়ম পাঠান", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -1444,9 +1471,9 @@ private fun PairingTabContent(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -1598,7 +1625,15 @@ private fun PairingTabContent(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        Text(text = "Generating QR Code...", color = Color.Gray)
+                        Text(
+                            text = when {
+                                parentAccountLabel == null -> "আগে Google দিয়ে সাইন-ইন করুন"
+                                qrRemainingSeconds <= 0 -> "কোডের মেয়াদ শেষ বা ব্যবহৃত হয়েছে। নিচের বাটনে নতুন কোড তৈরি করুন।"
+                                else -> "QR কোড তৈরি হচ্ছে..."
+                            },
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
