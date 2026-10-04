@@ -6,6 +6,7 @@ import android.util.Log
 import com.example.core.apps.InstalledAppsProvider
 import com.example.core.database.repository.PolicyRepository
 import com.example.core.model.EnrollmentStatus
+import com.example.core.policy.PolicyControls
 import com.example.core.usage.UsageRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -14,6 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalTime
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.Job
@@ -38,10 +43,17 @@ class ChildSyncController(
     private val usage: UsageRepository,
     private val enrollmentManager: EnrollmentManager,
     private val isDeviceOwner: () -> Boolean,
+    private val applyControls: (PolicyControls) -> Unit,
     private val enforcePolicy: suspend () -> Unit
 ) {
     // The controller owns its scope so it keeps running no matter which caller (service, UI) started it.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val _status = MutableStateFlow("Sync not started yet")
+    /** Human-readable last sync result, shown on the child dashboard so problems are visible without a debugger. */
+    val status: StateFlow<String> = _status.asStateFlow()
+
+    private fun now(): String = LocalTime.now().withNano(0).toString()
 
     private val _linkLost = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     /** Emits once when the parent has unlinked this device (local enrollment is already cleared). */
@@ -71,13 +83,18 @@ class ChildSyncController(
     }
 
     private suspend fun runSync() = coroutineScope {
-        if (!gateway.isAvailable) return@coroutineScope
-        val device = repository.getDevice() ?: return@coroutineScope
-        if (device.enrollmentStatus != EnrollmentStatus.ENROLLED) return@coroutineScope
+        if (!gateway.isAvailable) { _status.value = "Firebase is not configured in this build"; return@coroutineScope }
+        val device = repository.getDevice()
+        if (device == null || device.enrollmentStatus != EnrollmentStatus.ENROLLED) {
+            _status.value = "Not paired with a parent"
+            return@coroutineScope
+        }
+        _status.value = "Connecting..."
         val parentUid = device.parentId
         val childUid = device.deviceId
         if (gateway.currentUid() != childUid) {
             Log.w(TAG, "Signed-in uid does not match enrolled device id; sync disabled.")
+            _status.value = "Sync stopped: this phone's sign-in does not match the pairing. Unpair and pair again."
             return@coroutineScope
         }
 
@@ -103,6 +120,11 @@ class ChildSyncController(
             )
             if (applied) {
                 prefs.edit().putInt(KEY_ACKED, remote.version).apply()
+                _status.value = "Rules v${remote.version} applied at ${now()}"
+                // Controls first: enforcement below reads the lockdown flag from the store.
+                remote.controls?.let { c ->
+                    try { applyControls(c) } catch (e: Exception) { Log.e(TAG, "Applying controls failed", e) }
+                }
                 repository.logSyncAudit("POLICY_APPLIED_FROM_PARENT", remote.version, "Applied remote policy v${remote.version}")
                 enforcePolicy()
                 sendHeartbeat(parentUid, childUid)
@@ -158,7 +180,11 @@ class ChildSyncController(
             isDeviceOwner = isDeviceOwner(),
             accessibilityEnabled = isAccessibilityEnabled(),
             appVersion = appVersion()
-        ).onFailure { Log.w(TAG, "Heartbeat failed", it) }
+        ).onSuccess { _status.value = "Report sent at ${now()}" }
+            .onFailure {
+                Log.w(TAG, "Heartbeat failed", it)
+                _status.value = "Report failed: ${it.message}"
+            }
     }
 
     private fun isAccessibilityEnabled(): Boolean =
@@ -181,6 +207,7 @@ class ChildSyncController(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Listener error, retrying in ${RETRY_DELAY_MS / 1000}s", e)
+                _status.value = "Connection problem: ${e.message}"
                 delay(RETRY_DELAY_MS)
             }
         }
