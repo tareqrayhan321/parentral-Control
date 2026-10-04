@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,18 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChildCare
-import androidx.compose.material.icons.filled.FamilyRestroom
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,7 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,124 +42,86 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.viewmodel.AppMode
 
+private val ScreenBg = Color(0xFFF1EFF6)
+private val Navy = Color(0xFF3B4268)
+private val Purple = Color(0xFF7E5FD0)
+private val Orange = Color(0xFFF99233)
+private val Skin = Color(0xFFF2C4A5)
+
 @Composable
 fun DeviceRoleSelectionScreen(
     onRoleSelected: (AppMode) -> Unit
 ) {
     var selectedRole by remember { mutableStateOf<AppMode?>(null) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-    ) { innerPadding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ScreenBg)
+            .padding(horizontal = 24.dp, vertical = 24.dp)
+    ) {
+        Spacer(modifier = Modifier.height(56.dp))
+        Text(
+            text = "Who's going to use this device?",
+            fontSize = 32.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Navy,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(36.dp))
+
+        RoleCard(
+            title = "Parent",
+            subtitle = "This is my phone",
+            selected = selectedRole == AppMode.PARENT,
+            selectedColor = Purple,
+            tag = "select_parent_role",
+            onClick = { selectedRole = AppMode.PARENT },
+            illustration = {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Person(Color(0xFF2E2A57), Color(0xFF9B7BE8), longHair = true)
+                    Person(Color(0xFF4B3B2E), Color(0xFF5B8DEF), longHair = false)
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        RoleCard(
+            title = "Kid",
+            subtitle = "This is my kid's phone",
+            selected = selectedRole == AppMode.CHILD,
+            selectedColor = Orange,
+            tag = "select_child_role",
+            onClick = { selectedRole = AppMode.CHILD },
+            illustration = {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Person(Color(0xFF94455D), Color(0xFFEDC96B), longHair = true)
+                    Person(Color(0xFF5E3F5E), Color(0xFFEC6E8F), longHair = false)
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = { selectedRole?.let(onRoleSelected) },
+            enabled = selectedRole != null,
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .height(64.dp)
+                .testTag("confirm_role_button"),
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Purple,
+                contentColor = Color.White,
+                disabledContainerColor = Purple.copy(alpha = 0.35f),
+                disabledContentColor = Color.White
+            )
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = "Shield",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Text(
-                    text = "Welcome to Parental Control",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-
-                Text(
-                    text = "ডিভাইসের ভূমিকা নির্বাচন করুন (Select Device Role)",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-
-                Text(
-                    text = "এই ফোনটি কে ব্যবহার করবে? এটি কি অভিভাবকের ফোন নাকি সন্তানের ফোন?",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-                )
-
-                // Option 1: Parent Device
-                RoleCard(
-                    title = "অভিভাবকের ফোন (Parent's Phone)",
-                    subtitle = "এই ফোন দিয়ে সন্তানের ফোন নিয়ন্ত্রণ, সময়সীমা নির্ধারণ, অ্যাপ ব্লক এবং দূর থেকে মনিটর করুন।",
-                    icon = Icons.Default.FamilyRestroom,
-                    isSelected = selectedRole == AppMode.PARENT,
-                    onClick = { selectedRole = AppMode.PARENT },
-                    badgeText = "Control & Monitor",
-                    tag = "select_parent_role"
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Option 2: Child Device
-                RoleCard(
-                    title = "সন্তানের ফোন (Child's Phone)",
-                    subtitle = "এই ফোনে অ্যাপ ব্যবহারের সময়সীমা, ইন্টারনেট ফিল্টার এবং সুরক্ষা কার্যকর থাকবে।",
-                    icon = Icons.Default.ChildCare,
-                    isSelected = selectedRole == AppMode.CHILD,
-                    onClick = { selectedRole = AppMode.CHILD },
-                    badgeText = "Protected Device",
-                    tag = "select_child_role"
-                )
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Button(
-                    onClick = {
-                        selectedRole?.let { onRoleSelected(it) }
-                    },
-                    enabled = selectedRole != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("confirm_role_button"),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text(
-                        text = if (selectedRole == AppMode.PARENT) "Continue as Parent (অভিভাবক হিসেবে এগিয়ে যান)"
-                        else if (selectedRole == AppMode.CHILD) "Continue as Child (সন্তান হিসেবে সেটআপ করুন)"
-                        else "ভূমিকা নির্বাচন করুন (Select a Role)",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "যেকোনো সময় প্যারেন্ট পিন (PIN) দিয়ে ভূমিকা পরিবর্তন করা যাবে।",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text("Continue", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -171,85 +130,109 @@ fun DeviceRoleSelectionScreen(
 private fun RoleCard(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
+    selected: Boolean,
+    selectedColor: Color,
+    tag: String,
     onClick: () -> Unit,
-    badgeText: String,
-    tag: String
+    illustration: @Composable () -> Unit
 ) {
-    Card(
+    val shape = RoundedCornerShape(28.dp)
+    val textColor = if (selected) Color.White else Navy
+    Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected) selectedColor else Color.White)
             .clickable(onClick = onClick)
-            .testTag(tag),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-            else MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(
-            width = if (isSelected) 2.dp else 1.dp,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-        )
+            .animateContentSize()
+            .testTag(tag)
+            .padding(start = 24.dp, end = 24.dp, top = 20.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Column {
+                Text(title, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
+                Text(subtitle, fontSize = 24.sp, color = textColor)
+            }
             Box(
                 modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant
-                    ),
+                    .padding(top = 6.dp)
+                    .size(30.dp)
+                    .border(2.5.dp, if (selected) Color.White else Color(0xFFCFC9E6), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = badgeText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+                if (selected) {
+                    Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(Color.White))
                 }
             }
         }
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) { illustration() } 
+        } else {
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+/** Simple original character: head, hair and shoulders drawn with shapes. */
+@Composable
+private fun Person(hair: Color, body: Color, longHair: Boolean) {
+    Canvas(
+        modifier = Modifier
+            .width(110.dp)
+            .height(130.dp)
+            .clipToBounds()
+    ) {
+        val w = size.width
+        val h = size.height
+        // shoulders
+        drawRoundRect(
+            color = body,
+            topLeft = Offset(w * 0.05f, h * 0.62f),
+            size = Size(w * 0.9f, h * 0.7f),
+            cornerRadius = CornerRadius(w * 0.4f)
+        )
+        // long hair behind the head
+        if (longHair) {
+            drawRoundRect(
+                color = hair,
+                topLeft = Offset(w * 0.14f, h * 0.08f),
+                size = Size(w * 0.72f, h * 0.66f),
+                cornerRadius = CornerRadius(w * 0.36f)
+            )
+        }
+        // face
+        drawCircle(Skin, radius = w * 0.29f, center = Offset(w * 0.5f, h * 0.38f))
+        // hair cap
+        drawArc(
+            color = hair,
+            startAngle = 195f,
+            sweepAngle = 150f,
+            useCenter = true,
+            topLeft = Offset(w * 0.5f - w * 0.31f, h * 0.38f - w * 0.31f),
+            size = Size(w * 0.62f, w * 0.62f)
+        )
+        // eyes
+        val eye = Color(0xFF3B4268)
+        drawCircle(eye, radius = w * 0.025f, center = Offset(w * 0.40f, h * 0.41f))
+        drawCircle(eye, radius = w * 0.025f, center = Offset(w * 0.60f, h * 0.41f))
+        // smile
+        drawArc(
+            color = Color(0xFFB5654B),
+            startAngle = 20f,
+            sweepAngle = 140f,
+            useCenter = false,
+            topLeft = Offset(w * 0.43f, h * 0.43f),
+            size = Size(w * 0.14f, w * 0.10f),
+            style = Stroke(width = w * 0.018f)
+        )
     }
 }
