@@ -195,43 +195,11 @@ fun ParentDashboardScreen(
                 )
             }
         },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = currentTab == ParentTab.DASHBOARD || currentTab == ParentTab.APPS,
-                    onClick = { onSelectTab(ParentTab.DASHBOARD) },
-                    icon = { Icon(Icons.Default.Security, contentDescription = "Home") },
-                    label = { Text("Home") },
-                    modifier = Modifier.testTag("tab_overview")
-                )
-                NavigationBarItem(
-                    selected = currentTab == ParentTab.HABITS,
-                    onClick = { onSelectTab(ParentTab.HABITS) },
-                    icon = { Icon(Icons.Default.TaskAlt, contentDescription = "Habits") },
-                    label = { Text("Habits") },
-                    modifier = Modifier.testTag("tab_habits")
-                )
-                NavigationBarItem(
-                    selected = currentTab == ParentTab.SCHEDULES,
-                    onClick = { onSelectTab(ParentTab.SCHEDULES) },
-                    icon = { Icon(Icons.Default.Schedule, contentDescription = "Schedules") },
-                    label = { Text("Schedules") },
-                    modifier = Modifier.testTag("tab_schedules")
-                )
-                NavigationBarItem(
-                    selected = currentTab == ParentTab.AUDIT,
-                    onClick = { onSelectTab(ParentTab.AUDIT) },
-                    icon = { Icon(Icons.Default.History, contentDescription = "Activity") },
-                    label = { Text("Activity") },
-                    modifier = Modifier.testTag("tab_audit")
-                )
-            }
-        },
         floatingActionButton = {
             if (currentTab == ParentTab.SCHEDULES) {
                 FloatingActionButton(
                     onClick = { showAddScheduleDialog = true },
-                    modifier = Modifier.testTag("add_schedule_fab")
+                    modifier = Modifier.padding(bottom = 96.dp).testTag("add_schedule_fab")
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Schedule")
                 }
@@ -243,6 +211,12 @@ fun ParentDashboardScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+          // Home scrolls under the floating bar; other tabs keep clear of it.
+          Box(
+              modifier = Modifier
+                  .fillMaxSize()
+                  .padding(bottom = if (currentTab == ParentTab.DASHBOARD) 0.dp else 104.dp)
+          ) {
             when (currentTab) {
                 ParentTab.DASHBOARD -> ParentHomeTab(
                     parentName = parentName,
@@ -305,6 +279,12 @@ fun ParentDashboardScreen(
                     onChangePinRequested = onChangePinRequested
                 )
             }
+          }
+          FloatingNavBar(
+              currentTab = currentTab,
+              onSelectTab = onSelectTab,
+              modifier = Modifier.align(Alignment.BottomCenter)
+          )
         }
     }
 
