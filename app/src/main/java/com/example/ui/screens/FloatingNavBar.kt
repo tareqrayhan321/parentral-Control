@@ -58,12 +58,12 @@ fun FloatingNavBar(
     onSelectTab: (ParentTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(40.dp)
+    val shape = RoundedCornerShape(32.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
+            .padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
@@ -73,7 +73,7 @@ fun FloatingNavBar(
                 .clip(shape)
                 .background(Color.White.copy(alpha = 0.62f))
                 .border(1.dp, Color.White.copy(alpha = 0.75f), shape)
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
@@ -82,7 +82,7 @@ fun FloatingNavBar(
                     Box(
                         modifier = Modifier
                             .width(1.dp)
-                            .height(34.dp)
+                            .height(28.dp)
                             .background(Color(0x1F000000))
                     )
                 }
@@ -94,7 +94,7 @@ fun FloatingNavBar(
                         .weight(1f)
                         .clip(RoundedCornerShape(30.dp))
                         .clickable { onSelectTab(item.tab) }
-                        .padding(vertical = 6.dp)
+                        .padding(vertical = 2.dp)
                         .testTag(item.tag),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -102,7 +102,7 @@ fun FloatingNavBar(
                         imageVector = item.icon,
                         contentDescription = item.label,
                         tint = if (selected) NavActive else NavIdle,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                     Text(
                         text = item.label,

@@ -199,7 +199,7 @@ fun ParentDashboardScreen(
             if (currentTab == ParentTab.SCHEDULES) {
                 FloatingActionButton(
                     onClick = { showAddScheduleDialog = true },
-                    modifier = Modifier.padding(bottom = 96.dp).testTag("add_schedule_fab")
+                    modifier = Modifier.padding(bottom = 76.dp).testTag("add_schedule_fab")
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Schedule")
                 }
@@ -215,7 +215,7 @@ fun ParentDashboardScreen(
           Box(
               modifier = Modifier
                   .fillMaxSize()
-                  .padding(bottom = if (currentTab == ParentTab.DASHBOARD) 0.dp else 104.dp)
+                  .padding(bottom = if (currentTab == ParentTab.DASHBOARD) 0.dp else 84.dp)
           ) {
             when (currentTab) {
                 ParentTab.DASHBOARD -> ParentHomeTab(

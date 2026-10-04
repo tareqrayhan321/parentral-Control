@@ -497,7 +497,7 @@ fun ParentHomeTab(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Add Child", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0B3954))
                 }
-                Spacer(modifier = Modifier.height(120.dp))
+                Spacer(modifier = Modifier.height(100.dp))
             }
         }
     }
