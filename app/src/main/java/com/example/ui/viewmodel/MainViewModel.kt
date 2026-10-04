@@ -239,7 +239,6 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             try {
                 loadInitialData()
-                startSync()
                 if (!isParentRole()) enforcementManager.initializeDeviceEnforcement()
                 refreshUsage()
             } catch (e: Exception) {
