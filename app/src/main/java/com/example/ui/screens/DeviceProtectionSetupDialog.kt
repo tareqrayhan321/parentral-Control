@@ -337,7 +337,11 @@ private fun launchPermissionSetting(context: Context, permissionId: String) {
 
     for (intent in listOfNotNull(primary) + fallbacks) {
         try {
-            intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            // ACTION_ADD_DEVICE_ADMIN must NOT use NEW_TASK: Settings' DeviceAdminAdd screen finishes
+            // immediately ("Cannot start ADD_DEVICE_ADMIN as a new task"), which looked like a white flash.
+            if (context !is android.app.Activity) {
+                intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
             context.startActivity(intent)
             if (permissionId == "accessibility") {
                 android.widget.Toast.makeText(
