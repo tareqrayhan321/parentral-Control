@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -145,106 +146,112 @@ fun ParentHomeTab(
     val totalMinutes = todayUsage.values.sum()
     val blockedCount = policy.apps.values.count { it.mode == RestrictionMode.BLOCKED }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(HomeBg)
     ) {
-        // ---------- Header ----------
-        item {
-            Column(
+        // ---------- Fixed header (does not scroll) ----------
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                .background(HeaderGradient)
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                    .background(HeaderGradient)
-                    .statusBarsPadding()
-                    .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 24.dp)
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = displayName.first().uppercase(),
-                            color = Color.White,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(greeting(), color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
-                        Text(
-                            displayName,
-                            color = Color.White,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-                    Box {
-                        IconButton(
-                            onClick = { menuOpen = true },
-                            modifier = Modifier.testTag("home_menu_button")
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Account & pairing") },
-                                onClick = { menuOpen = false; onOpenAccount() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Change PIN") },
-                                onClick = { menuOpen = false; onChangePin() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Switch role") },
-                                onClick = { menuOpen = false; onSwitchRole() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Sign out") },
-                                onClick = { menuOpen = false; onSignOut() }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Summary glass card
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                        .padding(16.dp)
-                        .padding(end = 8.dp)
+                Text(
+                    text = displayName.first().uppercase(),
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(greeting(), color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
+                Text(
+                    displayName,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.testTag("home_menu_button")
                 ) {
-                    Text(
-                        text = when {
-                            deviceInfo == null -> "No child added yet"
-                            isSupervised -> "Family Safe"
-                            else -> "Protection paused"
-                        },
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Account & pairing") },
+                        onClick = { menuOpen = false; onOpenAccount() }
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        StatTile(if (deviceInfo != null) "1" else "0", "Children", Modifier.weight(1f))
-                        StatTile(formatMinutes(totalMinutes), "Today", Modifier.weight(1f))
-                        StatTile("$blockedCount", "Blocked apps", Modifier.weight(1f))
-                    }
+                    DropdownMenuItem(
+                        text = { Text("Change PIN") },
+                        onClick = { menuOpen = false; onChangePin() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Switch role") },
+                        onClick = { menuOpen = false; onSwitchRole() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sign out") },
+                        onClick = { menuOpen = false; onSignOut() }
+                    )
                 }
             }
         }
 
+        // ---------- Family Safe card: half over the header, half over the screen ----------
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    val overlap = placeable.height / 2
+                    layout(placeable.width, placeable.height - overlap) {
+                        placeable.place(0, -overlap)
+                    }
+                },
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            border = BorderStroke(1.dp, Color(0xFFE1E9E5))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = when {
+                        deviceInfo == null -> "No child added yet"
+                        isSupervised -> "Family Safe"
+                        else -> "Protection paused"
+                    },
+                    color = InkDark,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatTile(if (deviceInfo != null) "1" else "0", "Children", Modifier.weight(1f))
+                    StatTile(formatMinutes(totalMinutes), "Today", Modifier.weight(1f))
+                    StatTile("$blockedCount", "Blocked apps", Modifier.weight(1f))
+                }
+            }
+        }
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
         // ---------- Quick actions ----------
         item {
             SectionTitle("Quick actions")
@@ -500,6 +507,7 @@ fun ParentHomeTab(
                 Spacer(modifier = Modifier.height(100.dp))
             }
         }
+        }
     }
 
     if (showAddChild) {
@@ -542,12 +550,12 @@ private fun StatTile(value: String, label: String, modifier: Modifier = Modifier
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.12f))
+            .background(Color(0xFFEEF3F6))
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(value, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
+        Text(value, color = InkDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = InkSoft, fontSize = 12.sp, maxLines = 1)
     }
 }
 
