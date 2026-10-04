@@ -53,6 +53,8 @@ object PolicySerializer {
     }
 
     private val DNS_HOST_REGEX = Regex("^[A-Za-z0-9.-]{1,253}$")
+    /** Compatibility alias retained for callers from the earlier sync implementation. */
+    fun controlsFromRemote(data: Map<String, Any?>): PolicyControls? = controlsFromRemoteMap(data)
 
     private fun appToMap(a: AppPolicy): Map<String, Any?> = mapOf(
         "pkg" to a.packageName,

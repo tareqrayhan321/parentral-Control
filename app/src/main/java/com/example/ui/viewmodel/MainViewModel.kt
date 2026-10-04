@@ -234,6 +234,8 @@ class MainViewModel @JvmOverloads constructor(
     private fun isParentRole(): Boolean = rolePrefs.getString("device_role", null) == "PARENT"
 
     init {
+        // Independent of the rest of initialization: a failure or delay there must never stop sync from starting.
+        viewModelScope.launch { ensureSyncInternal() }
         viewModelScope.launch {
             try {
                 loadInitialData()
@@ -342,9 +344,25 @@ class MainViewModel @JvmOverloads constructor(
         )
     )
 
-    private fun startSync() {
-        if (!syncGateway.isAvailable) return
-        if (isParentRole()) startParentObservers() else if (_deviceInfo.value != null) ensureChildServiceRunning()
+    private suspend fun ensureSyncInternal() {
+        try {
+            if (!syncGateway.isAvailable) return
+            if (isParentRole()) {
+                startParentObservers()
+                return
+            }
+            val device = policyRepository.getDevice()
+            if (device != null && device.enrollmentStatus == EnrollmentStatus.ENROLLED) ensureChildServiceRunning()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Could not start sync", e)
+        }
+    }
+
+    /** Called whenever the app comes to the foreground; starting is idempotent. */
+    fun ensureSync() {
+        viewModelScope.launch { ensureSyncInternal() }
     }
 
     private suspend fun retrying(block: suspend () -> Unit) {

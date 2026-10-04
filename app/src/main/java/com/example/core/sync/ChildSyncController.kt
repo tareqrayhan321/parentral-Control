@@ -72,6 +72,7 @@ class ChildSyncController(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Child sync stopped unexpectedly", e)
+                _status.value = "Sync error: ${e.message}"
             }
         }
     }

@@ -35,6 +35,7 @@ const controlsV = () => ({
   dnsHost: 'family-filter-dns.cleanbrowsing.org',
   lockdown: false
 });
+const fullControls = controlsV();
 const policyV = (v, controls) => ({
   version: v,
   updatedAt: serverTimestamp(),
@@ -126,6 +127,21 @@ describe('policy', () => {
     const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
     await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), dnsHost: 'bad host/name' })));
     await assertFails(setDoc(ref(parentCtx()), policyV(1, { ...controlsV(), dnsHost: 'x'.repeat(254) })));
+  });
+  it('policy with unknown top-level fields is rejected', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    await assertFails(setDoc(ref(parentCtx()), { ...policyV(1), extra: 'x' }));
+    await assertSucceeds(setDoc(ref(parentCtx()), policyV(1)));
+  });
+  it('controls must use the exact field names and types', async () => {
+    const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');
+    const withControls = (c) => ({ ...policyV(1), controls: c });
+    // old/short names (camera, install, dns) are what the app once sent by mistake
+    await assertFails(setDoc(ref(parentCtx()), withControls({ supervised: true, camera: false, install: true, dns: true, dnsHost: 'a.example.org', lockdown: false })));
+    await assertFails(setDoc(ref(parentCtx()), withControls({ ...fullControls, lockdown: 'yes' })));
+    await assertFails(setDoc(ref(parentCtx()), withControls({ ...fullControls, dnsHost: 'bad host; x' })));
+    await assertFails(setDoc(ref(parentCtx()), withControls({ ...fullControls, extra: true })));
+    await assertSucceeds(setDoc(ref(parentCtx()), withControls(fullControls)));
   });
   it('child can read but never write policy', async () => {
     const ref = (db) => doc(db, 'families', PARENT, 'devices', CHILD, 'policy', 'current');

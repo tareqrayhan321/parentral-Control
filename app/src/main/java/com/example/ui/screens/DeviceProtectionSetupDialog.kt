@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,9 +78,24 @@ fun DeviceProtectionSetupDialog(
         refreshPermissions()
     }
 
+    // The user grants permissions on a different screen (system Settings). Re-read them every time this
+    // app comes back to the foreground, otherwise the list stays stale and a granted permission looks broken.
+    DisposableEffect(context) {
+        var owner: android.content.Context? = context
+        while (owner is android.content.ContextWrapper && owner !is androidx.lifecycle.LifecycleOwner) {
+            owner = owner.baseContext
+        }
+        val lifecycle = (owner as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refreshPermissions()
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+
     val grantedCount = permissionsList.count { it.isGranted }
     val totalCount = permissionsList.size
-    val isAllCrucial = DeviceProtectionManager.isAllCrucialGranted(context)
+    val isAllCrucial = permissionsList.filter { it.isCrucial }.all { it.isGranted }
 
     AlertDialog(
         onDismissRequest = onDismiss,
