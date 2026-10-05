@@ -27,4 +27,7 @@ interface DailyUsageDao {
 
     @Query("DELETE FROM daily_usage WHERE dateString < :olderThanDateString")
     suspend fun purgeOldUsage(olderThanDateString: String)
+
+    @Query("DELETE FROM daily_usage")
+    suspend fun clearAll()
 }

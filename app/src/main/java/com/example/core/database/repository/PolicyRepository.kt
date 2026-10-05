@@ -29,6 +29,12 @@ interface PolicyRepository {
     suspend fun updateAppSuspension(packageName: String, isSuspended: Boolean)
     suspend fun logSyncAudit(event: String, version: Int, details: String? = null)
     fun observeRecentAudits(): Flow<List<SyncAuditEntity>>
+
+    /**
+     * Parent phone only: replaces the local working copy (rules + today's usage) with another
+     * child's rules. Bypasses the monotonic check on purpose - it is a different device's history.
+     */
+    suspend fun resetWorkingCopy(policy: Policy) {}
 }
 
 class RoomPolicyRepository(
@@ -148,6 +154,33 @@ class RoomPolicyRepository(
                     lastSeenEpochMs = it.lastSynchronizedAt,
                     policyVersion = it.policyVersion,
                     enrollmentStatus = status
+                )
+            }
+        }
+    }
+
+    override suspend fun resetWorkingCopy(policy: Policy) {
+        database.withTransaction {
+            appPolicyDao.clearAll()
+            scheduleDao.clearAll()
+            dailyUsageDao.clearAll()
+            childDeviceDao.clearDevice()
+            if (policy.apps.isNotEmpty()) {
+                appPolicyDao.insertOrUpdateAll(policy.apps.values.map { AppPolicyEntity.fromDomain(it) })
+            }
+            if (policy.schedules.isNotEmpty()) {
+                scheduleDao.insertOrUpdateAll(policy.schedules.values.map { ScheduleEntity.fromDomain(it) })
+            }
+            if (policy.version > 0) {
+                childDeviceDao.saveDevice(
+                    ChildDeviceEntity(
+                        deviceId = "local_child_device",
+                        parentId = "",
+                        deviceName = "Managed Child Device",
+                        enrollmentStatus = EnrollmentStatus.ENROLLED.name,
+                        policyVersion = policy.version,
+                        lastSynchronizedAt = policy.updatedAtEpochMs
+                    )
                 )
             }
         }

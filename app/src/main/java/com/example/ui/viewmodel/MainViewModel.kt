@@ -46,6 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -214,6 +215,34 @@ class MainViewModel @JvmOverloads constructor(
     val childStatusLabel: StateFlow<String> = combine(_deviceInfo, _childHeartbeat, clock) { device, hb, now ->
         ChildStatusFormatter.format(device != null, hb, now)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Waiting for child connection...")
+
+    // ---- multi-child (parent phone) ----
+    // Every child linked to this parent. `deviceInfo` / `policy` / usage always describe the SELECTED child.
+    private val _children = MutableStateFlow<List<ChildDevice>>(emptyList())
+    val children: StateFlow<List<ChildDevice>> = _children.asStateFlow()
+
+    private val _selectedChildId = MutableStateFlow<String?>(rolePrefs.getString(SELECTED_CHILD_KEY, null))
+    val selectedChildId: StateFlow<String?> = _selectedChildId.asStateFlow()
+
+    private val _childHeartbeats = MutableStateFlow<Map<String, RemoteHeartbeat?>>(emptyMap())
+    val childHeartbeats: StateFlow<Map<String, RemoteHeartbeat?>> = _childHeartbeats.asStateFlow()
+
+    val childStatusLabels: StateFlow<Map<String, String>> = combine(_childHeartbeats, clock) { map, now ->
+        map.mapValues { (_, hb) -> ChildStatusFormatter.format(true, hb, now) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Edits made to the selected child's rules that were not sent yet. */
+    private val _hasUnsentChanges = MutableStateFlow(false)
+    val hasUnsentChanges: StateFlow<Boolean> = _hasUnsentChanges.asStateFlow()
+
+    /** Child the parent wants to switch to while unsent edits exist (UI asks what to do). */
+    private val _pendingChildSwitch = MutableStateFlow<String?>(null)
+    val pendingChildSwitch: StateFlow<String?> = _pendingChildSwitch.asStateFlow()
+
+    private val _isSwitchingChild = MutableStateFlow(false)
+    val isSwitchingChild: StateFlow<Boolean> = _isSwitchingChild.asStateFlow()
+
+    private var childrenLoaded = false
 
     private var parentSyncJob: Job? = null
 
@@ -392,25 +421,46 @@ class MainViewModel @JvmOverloads constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun startParentObservers() {
         parentSyncJob?.cancel()
+        childrenLoaded = false
         val parent = syncGateway.currentParent() ?: return
         parentSyncJob = viewModelScope.launch {
             launch {
                 retrying {
                     syncGateway.observeDevices().collect { list ->
-                        val d = list.firstOrNull()
-                        _deviceInfo.value = d?.let {
-                            ChildDevice(
-                                deviceId = it.deviceId,
-                                parentId = parent.uid,
-                                deviceName = it.deviceName,
-                                appVersion = it.appVersion,
-                                lastSeenEpochMs = 0L,
-                                policyVersion = 0,
-                                enrollmentStatus = EnrollmentStatus.ENROLLED
-                            )
-                        }
-                        _isChildConnectedToParent.value = d != null
+                        val devices = list
+                            .sortedWith(compareBy({ it.pairedAtEpochMs ?: Long.MAX_VALUE }, { it.deviceId }))
+                            .map {
+                                ChildDevice(
+                                    deviceId = it.deviceId,
+                                    parentId = parent.uid,
+                                    deviceName = it.deviceName,
+                                    appVersion = it.appVersion,
+                                    lastSeenEpochMs = it.pairedAtEpochMs ?: 0L,
+                                    policyVersion = 0,
+                                    enrollmentStatus = EnrollmentStatus.ENROLLED
+                                )
+                            }
+                        val previousCount = _children.value.size
+                        val firstEmission = !childrenLoaded
+                        childrenLoaded = true
+                        _children.value = devices
+                        _isChildConnectedToParent.value = devices.isNotEmpty()
+                        // A pairing QR is single-use: once a child claimed it, show a fresh one for the next child.
+                        if (!firstEmission && devices.size > previousCount) generatePairingQr()
+                        reconcileSelection(devices)
                     }
+                }
+            }
+            launch {
+                retrying {
+                    _children.map { l -> l.map { it.deviceId } }.distinctUntilChanged()
+                        .flatMapLatest { ids ->
+                            if (ids.isEmpty()) flowOf(emptyMap<String, RemoteHeartbeat?>())
+                            else combine(ids.map { id -> syncGateway.observeHeartbeat(id).map { hb -> id to hb } }) { arr ->
+                                arr.toMap()
+                            }
+                        }
+                        .collect { _childHeartbeats.value = it }
                 }
             }
             launch {
@@ -447,6 +497,130 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    // ------------------------------------------------------------ multi-child management
+
+    /** Keeps the selected child valid and makes the local working copy belong to it. */
+    private suspend fun reconcileSelection(devices: List<ChildDevice>) {
+        if (_isSwitchingChild.value) return
+        val target = devices.firstOrNull { it.deviceId == _selectedChildId.value } ?: devices.firstOrNull()
+        if (target == null) {
+            _selectedChildId.value = null
+            _deviceInfo.value = null
+            _hasUnsentChanges.value = false
+            return
+        }
+        val workingId = rolePrefs.getString(WORKING_COPY_KEY, null)
+        if (workingId == null || workingId == target.deviceId) {
+            // First child (or an update of the same child): the local rules already belong to it.
+            rolePrefs.edit()
+                .putString(WORKING_COPY_KEY, target.deviceId)
+                .putString(SELECTED_CHILD_KEY, target.deviceId)
+                .apply()
+            _selectedChildId.value = target.deviceId
+            _deviceInfo.value = target
+        } else {
+            _hasUnsentChanges.value = false
+            switchWorkingCopy(target)
+        }
+    }
+
+    /** Loads [target]'s rules from the server into the local working copy and makes it the selected child. */
+    private suspend fun switchWorkingCopy(target: ChildDevice): Boolean {
+        _isSwitchingChild.value = true
+        try {
+            val fetched = syncGateway.fetchPolicy(target.deviceId)
+            if (fetched.isFailure) {
+                _statusMessage.value = "Could not load ${target.deviceName}. Check your connection and try again."
+                return false
+            }
+            val remote = fetched.getOrNull()
+            // Stop the per-child observers while the working copy is swapped.
+            _deviceInfo.value = null
+            _childHeartbeat.value = null
+            policyRepository.resetWorkingCopy(
+                remote?.policy ?: Policy(version = 0, updatedAtEpochMs = System.currentTimeMillis())
+            )
+            controlsStore.set(remote?.controls ?: PolicyControls())
+            refreshDeviceOwnerFlags()
+            rolePrefs.edit()
+                .putString(WORKING_COPY_KEY, target.deviceId)
+                .putString(SELECTED_CHILD_KEY, target.deviceId)
+                .apply()
+            _selectedChildId.value = target.deviceId
+            _hasUnsentChanges.value = false
+            _deviceInfo.value = target
+            return true
+        } finally {
+            _isSwitchingChild.value = false
+        }
+    }
+
+    /** Parent picked another child. Unsent edits are never dropped silently. */
+    fun requestSelectChild(childId: String) {
+        if (!isParentRole() || childId == _selectedChildId.value) return
+        if (_children.value.none { it.deviceId == childId }) return
+        if (_hasUnsentChanges.value) {
+            _pendingChildSwitch.value = childId
+            return
+        }
+        viewModelScope.launch {
+            _children.value.firstOrNull { it.deviceId == childId }?.let { switchWorkingCopy(it) }
+        }
+    }
+
+    fun confirmChildSwitch(sendRulesFirst: Boolean) {
+        val id = _pendingChildSwitch.value ?: return
+        _pendingChildSwitch.value = null
+        viewModelScope.launch {
+            if (sendRulesFirst) {
+                val current = _deviceInfo.value
+                if (current != null && !pushRulesTo(current)) return@launch
+            }
+            _hasUnsentChanges.value = false
+            _children.value.firstOrNull { it.deviceId == id }?.let { switchWorkingCopy(it) }
+        }
+    }
+
+    fun cancelChildSwitch() {
+        _pendingChildSwitch.value = null
+    }
+
+    /** Unlinks one child. Rules enforce that only the owning parent may delete the device document. */
+    fun removeChild(childId: String) {
+        viewModelScope.launch {
+            if (!isParentRole()) return@launch
+            val child = _children.value.firstOrNull { it.deviceId == childId } ?: return@launch
+            syncGateway.unlinkDevice(childId)
+                .onSuccess {
+                    if (_pendingChildSwitch.value == childId) _pendingChildSwitch.value = null
+                    if (_selectedChildId.value == childId) _hasUnsentChanges.value = false
+                    _statusMessage.value = "${child.deviceName} was removed."
+                }
+                .onFailure { _statusMessage.value = "Could not remove ${child.deviceName}: ${it.message}" }
+        }
+    }
+
+    fun renameChild(childId: String, newName: String) {
+        val name = newName.trim()
+        if (name.isEmpty() || name.length > 40) {
+            _statusMessage.value = "Name must be 1-40 characters."
+            return
+        }
+        viewModelScope.launch {
+            if (_children.value.none { it.deviceId == childId }) return@launch
+            syncGateway.renameDevice(childId, name)
+                .onFailure { _statusMessage.value = "Could not rename: ${it.message}" }
+        }
+    }
+
+    /** Today's total minutes for one child (null until that child has reported). */
+    fun observeChildTodayMinutes(childId: String): Flow<Int?> =
+        syncGateway.observeUsage(childId, LocalDate.now().toString()).map { it?.values?.sum() }
+
+    private fun markRulesEdited() {
+        if (isParentRole()) _hasUnsentChanges.value = true
+    }
+
     fun signInParent(activity: Activity) {
         viewModelScope.launch {
             syncGateway.signInParentWithGoogle(activity)
@@ -475,6 +649,12 @@ class MainViewModel @JvmOverloads constructor(
             com.example.core.profile.ProfilePhotoLoader.clearCache(getApplication())
             _deviceInfo.value = null
             _childHeartbeat.value = null
+            _children.value = emptyList()
+            _childHeartbeats.value = emptyMap()
+            _selectedChildId.value = null
+            _pendingChildSwitch.value = null
+            _hasUnsentChanges.value = false
+            rolePrefs.edit().remove(SELECTED_CHILD_KEY).apply()
             _qrBitmap.value = null
             _qrPayloadJson.value = ""
             // Parent screens require Google sign-in, so go back to the login gate.
@@ -602,6 +782,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Updated ${updatedApp.displayName}: ${updatedApp.mode.name}"
         }
@@ -623,6 +804,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Schedule '${updated.name}' ${if (enabled) "enabled" else "disabled"}."
         }
@@ -645,6 +827,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Schedule '${schedule.name}' saved."
         }
@@ -663,6 +846,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Schedule removed."
         }
@@ -676,7 +860,7 @@ class MainViewModel @JvmOverloads constructor(
         _isMandatoryDnsEnforced.value = updated.mandatoryDns
         _enforcedDnsHost.value = updated.dnsHost
         _instantLockdown.value = updated.lockdown
-        if (isParentRole()) controlsStore.set(updated) else controlsApplier.apply(updated)
+        if (isParentRole()) { controlsStore.set(updated); markRulesEdited() } else controlsApplier.apply(updated)
     }
 
     private fun parentHint() = if (isParentRole()) " Press 'Send rules' to apply on the child." else ""
@@ -783,6 +967,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Scheduled block for $appName: %02d:%02d to %02d:%02d".format(startHour, startMin, endHour, endMin)
         }
@@ -803,6 +988,7 @@ class MainViewModel @JvmOverloads constructor(
             )
 
             policyRepository.applyNewPolicyAtomic(newPolicy)
+            markRulesEdited()
             enforcementManager.enforceCurrentPolicy()
             _statusMessage.value = "Removed scheduled time block for app."
         }
@@ -987,7 +1173,7 @@ class MainViewModel @JvmOverloads constructor(
             if (isParentRole()) {
                 val id = _deviceInfo.value?.deviceId ?: return@launch
                 syncGateway.unlinkDevice(id)
-                    .onSuccess { _statusMessage.value = "Child device unlinked." }
+                    .onSuccess { _hasUnsentChanges.value = false; _statusMessage.value = "Child device unlinked." }
                     .onFailure { _statusMessage.value = "Unlink failed: ${it.message}" }
                 return@launch
             }
@@ -1005,18 +1191,29 @@ class MainViewModel @JvmOverloads constructor(
             _statusMessage.value = "No child device is linked."
             return
         }
-        viewModelScope.launch {
-            val local = policyRepository.getCurrentPolicy()
-            syncGateway.pushPolicy(device.deviceId, local, controlsStore.get())
-                .onSuccess { remoteVersion ->
-                    policyRepository.logSyncAudit("POLICY_PUSHED", remoteVersion, "Pushed policy as remote v$remoteVersion")
-                    _statusMessage.value = "Rules sent (v$remoteVersion). The child applies them when it is online."
-                }
-                .onFailure { e ->
-                    Log.e("MainViewModel", "Push failed", e)
-                    _statusMessage.value = "Could not send rules: ${e.message}"
-                }
+        viewModelScope.launch { pushRulesTo(device) }
+    }
+
+    /** Sends the current working copy to [device] (always one of this parent's own children). */
+    private suspend fun pushRulesTo(device: ChildDevice): Boolean {
+        if (_children.value.none { it.deviceId == device.deviceId }) {
+            _statusMessage.value = "That child is no longer linked."
+            return false
         }
+        val local = policyRepository.getCurrentPolicy()
+        var ok = false
+        syncGateway.pushPolicy(device.deviceId, local, controlsStore.get())
+            .onSuccess { remoteVersion ->
+                policyRepository.logSyncAudit("POLICY_PUSHED", remoteVersion, "Pushed policy as remote v$remoteVersion to ${device.deviceId}")
+                _hasUnsentChanges.value = false
+                _statusMessage.value = "Rules sent to ${device.deviceName} (v$remoteVersion). It applies them when online."
+                ok = true
+            }
+            .onFailure { e ->
+                Log.e("MainViewModel", "Push failed", e)
+                _statusMessage.value = "Could not send rules: ${e.message}"
+            }
+        return ok
     }
 
     fun refreshUsage() {
@@ -1037,5 +1234,7 @@ class MainViewModel @JvmOverloads constructor(
 
     private companion object {
         const val PAIRING_VALIDITY_MINUTES = 10L
+        const val SELECTED_CHILD_KEY = "selected_child_id"
+        const val WORKING_COPY_KEY = "working_copy_child_id"
     }
 }

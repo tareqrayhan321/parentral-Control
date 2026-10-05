@@ -133,7 +133,12 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
             .addSnapshotListener { snap, err ->
                 if (err != null) { close(err); return@addSnapshotListener }
                 val list = snap?.documents.orEmpty().map {
-                    RemoteDevice(it.id, it.getString("deviceName") ?: "Child Device", it.getString("appVersion") ?: "?")
+                    RemoteDevice(
+                        it.id,
+                        it.getString("deviceName") ?: "Child Device",
+                        it.getString("appVersion") ?: "?",
+                        it.getTimestamp("pairedAt")?.toDate()?.time
+                    )
                 }
                 trySend(list)
             }
@@ -147,7 +152,8 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
                 lastSeenEpochMs = s.getTimestamp("lastSeen")?.toDate()?.time,
                 ackedPolicyVersion = (s.getLong("ackedPolicyVersion") ?: 0L).toInt(),
                 isDeviceOwner = s.getBoolean("isDeviceOwner") ?: false,
-                accessibilityEnabled = s.getBoolean("accessibilityEnabled") ?: false
+                accessibilityEnabled = s.getBoolean("accessibilityEnabled") ?: false,
+                appVersion = s.getString("appVersion")
             )
         }
     }
@@ -176,6 +182,32 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         if (!isAvailable) throw notConfigured()
         val parent = currentParent() ?: error("Sign in with Google first.")
         deviceRef(parent.uid, deviceId).delete().await()
+    }
+
+    override suspend fun renameDevice(deviceId: String, newName: String): Result<Unit> = runCatching {
+        if (!isAvailable) throw notConfigured()
+        val parent = currentParent() ?: error("Sign in with Google first.")
+        val name = newName.trim()
+        require(name.length in 1..40) { "Name must be 1-40 characters." }
+        // Rules: only the owning parent may change `deviceName` (nothing else).
+        deviceRef(parent.uid, deviceId).update(mapOf("deviceName" to name)).await()
+    }
+
+    override suspend fun fetchPolicy(deviceId: String): Result<RemotePolicy?> = runCatching {
+        if (!isAvailable) throw notConfigured()
+        val parent = currentParent() ?: error("Sign in with Google first.")
+        val s = deviceRef(parent.uid, deviceId).collection("policy").document("current")
+            .get(com.google.firebase.firestore.Source.SERVER).await()
+        val data = s.data
+        if (!s.exists() || data == null) null else {
+            val version = (s.getLong("version") ?: 0L).toInt()
+            val updated = s.getTimestamp("updatedAt")?.toDate()?.time ?: System.currentTimeMillis()
+            RemotePolicy(
+                version = version,
+                policy = PolicySerializer.fromRemoteMap(version, updated, data),
+                controls = PolicySerializer.controlsFromRemoteMap(data)
+            )
+        }
     }
 
     // ------------------------------------------------------------------ child

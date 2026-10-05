@@ -27,6 +27,12 @@ interface SyncGateway {
     /** Minutes per package for the given local date (YYYY-MM-DD), or null if the child has not reported yet. */
     fun observeUsage(deviceId: String, dateString: String): Flow<Map<String, Int>?>
     suspend fun unlinkDevice(deviceId: String): Result<Unit>
+    /** Parent renames one of its own children (rules allow only `deviceName` to change). */
+    suspend fun renameDevice(deviceId: String, newName: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Rename is not supported"))
+    /** One-shot read of the parent's current rules for a child (null = none pushed yet). */
+    suspend fun fetchPolicy(deviceId: String): Result<RemotePolicy?> =
+        Result.failure(UnsupportedOperationException("Not supported"))
 
     // ---- child side ----
     fun currentUid(): String?

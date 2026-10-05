@@ -71,6 +71,12 @@ class MainActivity : ComponentActivity() {
                 val parentAccountLabel by viewModel.parentAccountLabel.collectAsState()
                 val parentDisplayName by viewModel.parentDisplayName.collectAsState()
                 val parentPhotoUrl by viewModel.parentPhotoUrl.collectAsState()
+                val children by viewModel.children.collectAsState()
+                val selectedChildId by viewModel.selectedChildId.collectAsState()
+                val childStatusLabels by viewModel.childStatusLabels.collectAsState()
+                val childHeartbeats by viewModel.childHeartbeats.collectAsState()
+                val isSwitchingChild by viewModel.isSwitchingChild.collectAsState()
+                val pendingChildSwitch by viewModel.pendingChildSwitch.collectAsState()
                 val childSyncStatus by viewModel.childSyncStatus.collectAsState()
                 val childStatusLabel by viewModel.childStatusLabel.collectAsState()
                 val isChildConnectedToParent by viewModel.isChildConnectedToParent.collectAsState()
@@ -157,6 +163,18 @@ class MainActivity : ComponentActivity() {
                                     parentName = parentDisplayName,
                                     parentPhotoUrl = parentPhotoUrl,
                                     childStatusLabel = childStatusLabel,
+                                    children = children,
+                                    selectedChildId = selectedChildId,
+                                    childStatusLabels = childStatusLabels,
+                                    childHeartbeats = childHeartbeats,
+                                    isSwitchingChild = isSwitchingChild,
+                                    pendingChildSwitch = pendingChildSwitch,
+                                    onSelectChild = { viewModel.requestSelectChild(it) },
+                                    onRemoveChild = { viewModel.removeChild(it) },
+                                    onRenameChild = { id, name -> viewModel.renameChild(id, name) },
+                                    onConfirmChildSwitch = { viewModel.confirmChildSwitch(it) },
+                                    onCancelChildSwitch = { viewModel.cancelChildSwitch() },
+                                    observeChildMinutes = { viewModel.observeChildTodayMinutes(it) },
                                     onSignIn = { viewModel.signInParent(this@MainActivity) },
                                     onSignOut = { viewModel.signOutParent() },
                                     onSelectTab = { viewModel.selectParentTab(it) },

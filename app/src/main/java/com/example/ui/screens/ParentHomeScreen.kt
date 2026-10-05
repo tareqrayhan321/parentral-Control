@@ -52,12 +52,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +79,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.core.model.ChildDevice
+import com.example.core.sync.RemoteHeartbeat
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import com.example.core.model.DnsProvider
 import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
@@ -134,12 +143,37 @@ fun ParentHomeTab(
     onOpenAccount: () -> Unit,
     onChangePin: () -> Unit,
     onSwitchRole: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    // ---- multi-child ----
+    children: List<ChildDevice> = emptyList(),
+    selectedChildId: String? = null,
+    childStatusLabels: Map<String, String> = emptyMap(),
+    childHeartbeats: Map<String, RemoteHeartbeat?> = emptyMap(),
+    isSwitchingChild: Boolean = false,
+    pendingChildSwitch: String? = null,
+    onSelectChild: (String) -> Unit = {},
+    onRemoveChild: (String) -> Unit = {},
+    onRenameChild: (String, String) -> Unit = { _, _ -> },
+    onConfirmChildSwitch: (Boolean) -> Unit = {},
+    onCancelChildSwitch: () -> Unit = {},
+    observeChildMinutes: (String) -> Flow<Int?> = { emptyFlow() }
 ) {
     var showAddChild by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
+    var removeTarget by remember { mutableStateOf<ChildDevice?>(null) }
+    var profileTarget by remember { mutableStateOf<ChildDevice?>(null) }
+    var renameTarget by remember { mutableStateOf<ChildDevice?>(null) }
+    val childCount = if (children.isNotEmpty()) children.size else if (deviceInfo != null) 1 else 0
+
+    LaunchedEffect(deviceInfo?.deviceId) { expanded = false }
+
+    // Close the "Add Child" dialog as soon as a new child has linked.
+    var lastChildCount by remember { mutableStateOf(childCount) }
+    LaunchedEffect(childCount) {
+        if (childCount > lastChildCount) showAddChild = false
+        lastChildCount = childCount
+    }
 
     val displayName = parentName?.takeIf { it.isNotBlank() }
         ?: parentEmail?.substringBefore('@')?.takeIf { it.isNotBlank() }
@@ -236,7 +270,7 @@ fun ParentHomeTab(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile(if (deviceInfo != null) "1" else "0", "Children", Modifier.weight(1f))
+                    StatTile("$childCount", "Children", Modifier.weight(1f))
                     StatTile(formatMinutes(totalMinutes), "Today", Modifier.weight(1f))
                     StatTile("$blockedCount", "Blocked apps", Modifier.weight(1f))
                 }
@@ -304,7 +338,7 @@ fun ParentHomeTab(
         item { SectionTitle("Family members") }
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                if (deviceInfo == null) {
+                if (children.isEmpty() && deviceInfo == null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(24.dp),
@@ -321,159 +355,185 @@ fun ParentHomeTab(
                         )
                     }
                 } else {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateContentSize(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0xFFE1E9E5))
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFD9C7FF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        deviceInfo.deviceName.firstOrNull()?.uppercase() ?: "?",
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF4B2A9A)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        deviceInfo.deviceName,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = InkDark
-                                    )
-                                    Text(childStatusLabel, fontSize = 13.sp, color = InkSoft)
-                                    Text(
-                                        "${formatMinutes(totalMinutes)} today",
-                                        fontSize = 13.sp,
-                                        color = InkSoft
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { expanded = !expanded },
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFEFF3F6))
-                                        .testTag("child_expand_button")
-                                ) {
-                                    Icon(
-                                        if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Details"
-                                    )
-                                }
-                            }
-
-                            // The child's apps (usage, limits, blocks) live under the child.
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0xFFF1F5F8))
-                                    .clickable(onClick = onOpenApps)
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
-                                    .testTag("child_apps_button"),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Apps, contentDescription = null, tint = Color(0xFF0B3954))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Apps", fontWeight = FontWeight.Bold, color = InkDark)
-                                    Text(
-                                        "${policy.apps.size} apps • $blockedCount blocked",
-                                        fontSize = 12.sp,
-                                        color = InkSoft
-                                    )
-                                }
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = InkSoft)
-                            }
-
-                            if (expanded) {
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Parental supervision", fontWeight = FontWeight.SemiBold, color = InkDark)
+                    val shown = if (children.isNotEmpty()) children else listOfNotNull(deviceInfo)
+                    shown.forEachIndexed { index, child ->
+                        if (index > 0) Spacer(modifier = Modifier.height(12.dp))
+                        if (child.deviceId == deviceInfo?.deviceId) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateContentSize(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(
+                                if (childCount > 1) 1.5.dp else 1.dp,
+                                if (childCount > 1) Color(0xFF0B3954) else Color(0xFFE1E9E5)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFD9C7FF)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
                                         Text(
-                                            if (isSupervised) "Active" else "Paused",
-                                            fontSize = 12.sp,
-                                            color = if (isSupervised) StatusAllowed else InkSoft
+                                            child.deviceName.firstOrNull()?.uppercase() ?: "?",
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4B2A9A)
                                         )
                                     }
-                                    Switch(
-                                        checked = isSupervised,
-                                        onCheckedChange = onToggleSupervision,
-                                        modifier = Modifier.testTag("supervision_switch")
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            child.deviceName,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = InkDark
+                                        )
+                                        Text(childStatusLabel, fontSize = 13.sp, color = InkSoft)
+                                        Text(
+                                            "${formatMinutes(totalMinutes)} today",
+                                            fontSize = 13.sp,
+                                            color = InkSoft
+                                        )
+                                    }
+                                    ChildOverflowMenu(
+                                        onProfile = { profileTarget = child },
+                                        onRename = { renameTarget = child },
+                                        onRemove = { removeTarget = child }
                                     )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = if (isDeviceOwner) "Full device control: ON" else "Full device control: not set up on child phone",
-                                    fontSize = 12.sp,
-                                    color = if (isDeviceOwner) StatusAllowed else InkSoft
-                                )
-
-                                if (isMandatoryDnsEnforced) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text("Safe Internet provider", fontWeight = FontWeight.SemiBold, color = InkDark)
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    IconButton(
+                                        onClick = { expanded = !expanded },
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFEFF3F6))
+                                            .testTag("child_expand_button")
                                     ) {
-                                        DnsProvider.ALL_PROVIDERS.forEach { provider ->
-                                            FilterChip(
-                                                selected = enforcedDnsHost == provider.host,
-                                                onClick = { onSetMandatoryDns(true, provider.host) },
-                                                label = { Text(provider.name, fontSize = 12.sp) }
+                                        Icon(
+                                            if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Details"
+                                        )
+                                    }
+                                }
+
+                                // The child's apps (usage, limits, blocks) live under the child.
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFFF1F5F8))
+                                        .clickable(onClick = onOpenApps)
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        .testTag("child_apps_button"),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Apps, contentDescription = null, tint = Color(0xFF0B3954))
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Apps", fontWeight = FontWeight.Bold, color = InkDark)
+                                        Text(
+                                            "${policy.apps.size} apps • $blockedCount blocked",
+                                            fontSize = 12.sp,
+                                            color = InkSoft
+                                        )
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = InkSoft)
+                                }
+
+                                if (expanded) {
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Parental supervision", fontWeight = FontWeight.SemiBold, color = InkDark)
+                                            Text(
+                                                if (isSupervised) "Active" else "Paused",
+                                                fontSize = 12.sp,
+                                                color = if (isSupervised) StatusAllowed else InkSoft
                                             )
+                                        }
+                                        Switch(
+                                            checked = isSupervised,
+                                            onCheckedChange = onToggleSupervision,
+                                            modifier = Modifier.testTag("supervision_switch")
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = if (isDeviceOwner) "Full device control: ON" else "Full device control: not set up on child phone",
+                                        fontSize = 12.sp,
+                                        color = if (isDeviceOwner) StatusAllowed else InkSoft
+                                    )
+
+                                    if (isMandatoryDnsEnforced) {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text("Safe Internet provider", fontWeight = FontWeight.SemiBold, color = InkDark)
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            DnsProvider.ALL_PROVIDERS.forEach { provider ->
+                                                FilterChip(
+                                                    selected = enforcedDnsHost == provider.host,
+                                                    onClick = { onSetMandatoryDns(true, provider.host) },
+                                                    label = { Text(provider.name, fontSize = 12.sp) }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Button(
+                                            onClick = onPushSync,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp)
+                                                .testTag("push_sync_button"),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Send rules", fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = { removeTarget = child },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = StatusBlocked,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Remove", color = StatusBlocked, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Button(
-                                        onClick = onPushSync,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(46.dp)
-                                            .testTag("push_sync_button"),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ) {
-                                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Send rules", fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = { confirmRemove = true },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(46.dp),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = null,
-                                            tint = StatusBlocked,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Remove", color = StatusBlocked, fontWeight = FontWeight.Bold)
-                                    }
-                                }
                             }
+                        }
+
+                        } else {
+                            ChildSummaryCard(
+                                child = child,
+                                statusLabel = childStatusLabels[child.deviceId]
+                                    ?: "Linked • waiting for first report from child",
+                                loading = isSwitchingChild,
+                                onSelect = { onSelectChild(child.deviceId) },
+                                onProfile = { profileTarget = child },
+                                onRename = { renameTarget = child },
+                                onRemove = { removeTarget = child }
+                            )
                         }
                     }
                 }
@@ -511,17 +571,73 @@ fun ParentHomeTab(
         )
     }
 
-    if (confirmRemove) {
+    removeTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text("Remove child phone?") },
-            text = { Text("Rules will stop applying and this phone will be unlinked from your account.") },
+            onDismissRequest = { removeTarget = null },
+            title = { Text("Remove ${target.deviceName}?") },
+            text = { Text("Rules will stop applying and this phone will be unlinked from your account. Your other children are not affected.") },
             confirmButton = {
-                TextButton(onClick = { confirmRemove = false; expanded = false; onUnpairChild() }) {
+                TextButton(onClick = { removeTarget = null; expanded = false; onRemoveChild(target.deviceId) }) {
                     Text("Remove", color = StatusBlocked)
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } }
+        )
+    }
+
+    renameTarget?.let { target ->
+        var name by remember(target.deviceId) { mutableStateOf(target.deviceName) }
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename child") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { if (it.length <= 40) name = it },
+                    singleLine = true,
+                    label = { Text("Name") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank(),
+                    onClick = { onRenameChild(target.deviceId, name); renameTarget = null }
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } }
+        )
+    }
+
+    profileTarget?.let { target ->
+        ChildProfileDialog(
+            child = children.firstOrNull { it.deviceId == target.deviceId } ?: target,
+            heartbeat = childHeartbeats[target.deviceId],
+            statusLabel = childStatusLabels[target.deviceId]
+                ?: if (target.deviceId == deviceInfo?.deviceId) childStatusLabel else "Linked",
+            isSelected = target.deviceId == deviceInfo?.deviceId,
+            observeMinutes = observeChildMinutes,
+            onDismiss = { profileTarget = null },
+            onRename = { renameTarget = target; profileTarget = null },
+            onRemove = { removeTarget = target; profileTarget = null },
+            onManage = { onSelectChild(target.deviceId); profileTarget = null }
+        )
+    }
+
+    if (pendingChildSwitch != null) {
+        val fromName = deviceInfo?.deviceName ?: "this child"
+        AlertDialog(
+            onDismissRequest = onCancelChildSwitch,
+            title = { Text("Unsent changes") },
+            text = { Text("You changed the rules for $fromName but have not sent them yet. Send them before switching?") },
+            confirmButton = {
+                TextButton(onClick = { onConfirmChildSwitch(true) }) { Text("Send & switch") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { onConfirmChildSwitch(false) }) { Text("Discard", color = StatusBlocked) }
+                    TextButton(onClick = onCancelChildSwitch) { Text("Cancel") }
+                }
+            }
         )
     }
 }
@@ -657,5 +773,171 @@ fun AddChildDialog(
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
         }
+    }
+}
+
+@Composable
+private fun ChildOverflowMenu(onProfile: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.testTag("child_menu_button")) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Child options", tint = InkSoft)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Profile") }, onClick = { open = false; onProfile() })
+            DropdownMenuItem(text = { Text("Rename") }, onClick = { open = false; onRename() })
+            DropdownMenuItem(
+                text = { Text("Remove", color = StatusBlocked) },
+                onClick = { open = false; onRemove() }
+            )
+        }
+    }
+}
+
+/** Compact card for a child that is not the one currently being managed. Tap to manage it. */
+@Composable
+private fun ChildSummaryCard(
+    child: ChildDevice,
+    statusLabel: String,
+    loading: Boolean,
+    onSelect: () -> Unit,
+    onProfile: () -> Unit,
+    onRename: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !loading, onClick = onSelect)
+            .testTag("child_card_${child.deviceId}"),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE1E9E5))
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFD9C7FF)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    child.deviceName.firstOrNull()?.uppercase() ?: "?",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4B2A9A)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(child.deviceName, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = InkDark, maxLines = 1)
+                Text(statusLabel, fontSize = 13.sp, color = InkSoft)
+                Text(
+                    if (loading) "Loading rules…" else "Tap to manage",
+                    fontSize = 12.sp,
+                    color = Color(0xFF0B3954)
+                )
+            }
+            ChildOverflowMenu(onProfile = onProfile, onRename = onRename, onRemove = onRemove)
+        }
+    }
+}
+
+@Composable
+private fun ChildProfileDialog(
+    child: ChildDevice,
+    heartbeat: RemoteHeartbeat?,
+    statusLabel: String,
+    isSelected: Boolean,
+    observeMinutes: (String) -> Flow<Int?>,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onRemove: () -> Unit,
+    onManage: () -> Unit
+) {
+    val minutesFlow = remember(child.deviceId) { observeMinutes(child.deviceId) }
+    val minutes by minutesFlow.collectAsState(initial = null)
+    val dateFmt = remember { DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(28.dp), color = Color.White) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFD9C7FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            child.deviceName.firstOrNull()?.uppercase() ?: "?",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4B2A9A)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(child.deviceName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = InkDark)
+                        Text(if (isSelected) "Currently managing" else "Linked child", fontSize = 12.sp, color = InkSoft)
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                ProfileRow("Status", statusLabel)
+                ProfileRow("Device", "${child.platform} • ${child.deviceName}")
+                ProfileRow("App version", heartbeat?.appVersion ?: child.appVersion)
+                if (child.lastSeenEpochMs > 0L) {
+                    ProfileRow(
+                        "Linked on",
+                        Instant.ofEpochMilli(child.lastSeenEpochMs).atZone(ZoneId.systemDefault()).toLocalDate().format(dateFmt)
+                    )
+                }
+                ProfileRow("Used today", minutes?.let { formatMinutes(it) } ?: "No report yet")
+                ProfileRow("Rules applied", heartbeat?.let { "v${it.ackedPolicyVersion}" } ?: "—")
+                ProfileRow("Full device control", if (heartbeat?.isDeviceOwner == true) "On" else "Not set up")
+                ProfileRow("Accessibility guard", if (heartbeat?.accessibilityEnabled == true) "On" else "Off")
+                Spacer(modifier = Modifier.height(16.dp))
+                if (!isSelected) {
+                    Button(
+                        onClick = onManage,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Manage this child", fontWeight = FontWeight.Bold) }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onRename,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Rename") }
+                    OutlinedButton(
+                        onClick = onRemove,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Remove", color = StatusBlocked) }
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Close") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(label, fontSize = 13.sp, color = InkSoft, modifier = Modifier.weight(0.42f))
+        Text(
+            value,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = InkDark,
+            modifier = Modifier.weight(0.58f)
+        )
     }
 }

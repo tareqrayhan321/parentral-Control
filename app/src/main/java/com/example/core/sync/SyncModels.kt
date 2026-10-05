@@ -14,7 +14,12 @@ data class ParentAccount(
 )
 data class PairingToken(val token: String, val parentUid: String, val expiresAtEpochMs: Long)
 data class ClaimResult(val parentUid: String, val childUid: String)
-data class RemoteDevice(val deviceId: String, val deviceName: String, val appVersion: String)
+data class RemoteDevice(
+    val deviceId: String,
+    val deviceName: String,
+    val appVersion: String,
+    val pairedAtEpochMs: Long? = null
+)
 data class RemotePolicy(
     val version: Int,
     val policy: Policy,
@@ -24,7 +29,8 @@ data class RemoteHeartbeat(
     val lastSeenEpochMs: Long?,
     val ackedPolicyVersion: Int,
     val isDeviceOwner: Boolean,
-    val accessibilityEnabled: Boolean
+    val accessibilityEnabled: Boolean,
+    val appVersion: String? = null
 )
 data class RemoteInventory(val apps: List<InstalledApp>)
 

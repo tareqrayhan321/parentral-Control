@@ -99,6 +99,9 @@ import com.example.core.model.DnsProvider
 import com.example.core.model.Policy
 import com.example.core.model.RestrictionMode
 import com.example.core.model.Schedule
+import com.example.core.sync.RemoteHeartbeat
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import com.example.core.model.TimeOfDay
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.BorderStroke
@@ -153,6 +156,18 @@ fun ParentDashboardScreen(
     parentName: String? = null,
     parentPhotoUrl: String? = null,
     childStatusLabel: String = "",
+    children: List<ChildDevice> = emptyList(),
+    selectedChildId: String? = null,
+    childStatusLabels: Map<String, String> = emptyMap(),
+    childHeartbeats: Map<String, RemoteHeartbeat?> = emptyMap(),
+    isSwitchingChild: Boolean = false,
+    pendingChildSwitch: String? = null,
+    onSelectChild: (String) -> Unit = {},
+    onRemoveChild: (String) -> Unit = {},
+    onRenameChild: (String, String) -> Unit = { _, _ -> },
+    onConfirmChildSwitch: (Boolean) -> Unit = {},
+    onCancelChildSwitch: () -> Unit = {},
+    observeChildMinutes: (String) -> Flow<Int?> = { emptyFlow() },
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onPushSync: () -> Unit = {},
@@ -248,7 +263,19 @@ fun ParentDashboardScreen(
                     onOpenAccount = { onSelectTab(ParentTab.PAIRING) },
                     onChangePin = onChangePinRequested,
                     onSwitchRole = onSwitchRoleRequested,
-                    onSignOut = onSignOut
+                    onSignOut = onSignOut,
+                    children = children,
+                    selectedChildId = selectedChildId,
+                    childStatusLabels = childStatusLabels,
+                    childHeartbeats = childHeartbeats,
+                    isSwitchingChild = isSwitchingChild,
+                    pendingChildSwitch = pendingChildSwitch,
+                    onSelectChild = onSelectChild,
+                    onRemoveChild = onRemoveChild,
+                    onRenameChild = onRenameChild,
+                    onConfirmChildSwitch = onConfirmChildSwitch,
+                    onCancelChildSwitch = onCancelChildSwitch,
+                    observeChildMinutes = observeChildMinutes
                 )
                 ParentTab.HABITS -> HabitsTabContent()
                 ParentTab.APPS -> AppsTabContent(
@@ -275,7 +302,12 @@ fun ParentDashboardScreen(
                     qrRemainingSeconds = qrRemainingSeconds,
                     onRegenerateQr = onRegenerateQr,
                     onPushSync = onPushSync,
-                    onUnpairChild = onUnpairChild
+                    onUnpairChild = onUnpairChild,
+                    children = children,
+                    selectedChildId = selectedChildId,
+                    childStatusLabels = childStatusLabels,
+                    onSelectChild = onSelectChild,
+                    onRemoveChild = onRemoveChild
                 )
                 ParentTab.AUDIT -> AuditTabContent(
                     audits = audits,
@@ -1419,8 +1451,14 @@ private fun PairingTabContent(
     qrRemainingSeconds: Int,
     onRegenerateQr: () -> Unit,
     onPushSync: () -> Unit,
-    onUnpairChild: () -> Unit
+    onUnpairChild: () -> Unit,
+    children: List<ChildDevice> = emptyList(),
+    selectedChildId: String? = null,
+    childStatusLabels: Map<String, String> = emptyMap(),
+    onSelectChild: (String) -> Unit = {},
+    onRemoveChild: (String) -> Unit = {}
 ) {
+    var unlinkTarget by remember { mutableStateOf<ChildDevice?>(null) }
     val minutes = qrRemainingSeconds / 60
     val seconds = qrRemainingSeconds % 60
 
@@ -1506,7 +1544,7 @@ private fun PairingTabContent(
             }
         }
 
-        // Connected Child Device Status Card
+        // Connected children (one row per linked child device)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1521,17 +1559,29 @@ private fun PairingTabContent(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    val shown = if (children.isNotEmpty()) children else listOfNotNull(deviceInfo)
+                    Text(
+                        text = if (shown.isEmpty()) "No Child Phone Connected"
+                        else "Connected children (${shown.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    shown.forEach { child ->
+                        val isSelected = child.deviceId == (selectedChildId ?: deviceInfo?.deviceId)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onSelectChild(child.deviceId) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(CircleShape)
-                                    .background(if (deviceInfo != null) StatusAllowed else Color.Gray),
+                                    .background(StatusAllowed),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -1542,23 +1592,21 @@ private fun PairingTabContent(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = deviceInfo?.deviceName ?: "No Child Phone Connected",
-                                    style = MaterialTheme.typography.titleMedium,
+                                    text = child.deviceName + if (isSelected && shown.size > 1) "  • managing" else "",
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = childStatusLabel,
+                                    text = if (isSelected) childStatusLabel
+                                    else childStatusLabels[child.deviceId] ?: "Linked",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        }
-
-                        if (deviceInfo != null) {
                             OutlinedButton(
-                                onClick = onUnpairChild,
+                                onClick = { unlinkTarget = child },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text("Unlink", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
@@ -1575,7 +1623,7 @@ private fun PairingTabContent(
                         ) {
                             Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sync All Rules to Child (নিয়মাবলী আপডেট পাঠান)")
+                            Text("Sync All Rules to Child (নিয়মাবলী আপডেট পাঠান)")
                         }
                     }
                 }
@@ -1691,6 +1739,20 @@ private fun PairingTabContent(
                 }
             }
         }
+    }
+
+    unlinkTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { unlinkTarget = null },
+            title = { Text("Unlink ${target.deviceName}?") },
+            text = { Text("Rules will stop applying and this phone will be removed from your account. Other children are not affected.") },
+            confirmButton = {
+                TextButton(onClick = { unlinkTarget = null; onRemoveChild(target.deviceId) }) {
+                    Text("Unlink", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { unlinkTarget = null }) { Text("Cancel") } }
+        )
     }
 }
 
