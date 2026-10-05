@@ -103,9 +103,30 @@ class ChildSyncController(
         launch { watchLink(parentUid, childUid) }
         launch { heartbeatLoop(parentUid, childUid) }
         launch { usageLoop(parentUid, childUid) }
-        launch {
-            gateway.uploadInventory(parentUid, childUid, installedApps.listLaunchableApps())
-                .onFailure { Log.w(TAG, "Inventory upload failed", it) }
+        launch { inventoryLoop(parentUid, childUid) }
+    }
+
+    /**
+     * Reports this (child) phone's real installed apps to the parent: right away, then again whenever the
+     * list changes (install / uninstall), so the parent always sees the child's apps and never anything else.
+     */
+    private suspend fun inventoryLoop(parentUid: String, childUid: String) {
+        var lastSent: Set<Pair<String, String>>? = null
+        while (true) {
+            try {
+                val apps = installedApps.listLaunchableApps()
+                val signature = apps.map { it.packageName to it.displayName }.toSet()
+                if (apps.isNotEmpty() && signature != lastSent) {
+                    gateway.uploadInventory(parentUid, childUid, apps)
+                        .onSuccess { lastSent = signature }
+                        .onFailure { Log.w(TAG, "Inventory upload failed", it) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Inventory refresh failed", e)
+            }
+            delay(INVENTORY_INTERVAL_MS)
         }
     }
 
@@ -220,5 +241,6 @@ class ChildSyncController(
         private const val HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000L
         private const val RETRY_DELAY_MS = 30_000L
         private const val USAGE_INTERVAL_MS = 5 * 60 * 1000L
+        private const val INVENTORY_INTERVAL_MS = 5 * 60 * 1000L
     }
 }
