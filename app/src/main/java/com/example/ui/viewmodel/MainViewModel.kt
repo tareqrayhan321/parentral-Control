@@ -258,9 +258,14 @@ class MainViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             childSync.linkLost.collect {
-                _isChildConnectedToParent.value = false
-                _deviceInfo.value = null
-                _statusMessage.value = "This device is no longer linked. Scan the parent's QR code to connect again."
+                // Only clear the UI when local enrollment has also been removed; this avoids
+                // briefly losing the child state while the background reset is being persisted.
+                val stillEnrolled = policyRepository.getDevice()?.enrollmentStatus == EnrollmentStatus.ENROLLED
+                if (!stillEnrolled) {
+                    _isChildConnectedToParent.value = false
+                    _deviceInfo.value = null
+                    _statusMessage.value = "This device is no longer linked. Scan the parent's QR code to connect again."
+                }
             }
         }
     }
@@ -419,7 +424,13 @@ class MainViewModel @JvmOverloads constructor(
                 return
             }
             val device = policyRepository.getDevice()
-            if (device != null && device.enrollmentStatus == EnrollmentStatus.ENROLLED) ensureChildServiceRunning()
+            if (device != null && device.enrollmentStatus == EnrollmentStatus.ENROLLED) {
+                ensureChildServiceRunning()
+            } else {
+                // Not (or no longer) paired: never keep showing "Linked" from stale in-memory state.
+                _isChildConnectedToParent.value = false
+                _deviceInfo.value = null
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1078,6 +1089,15 @@ class MainViewModel @JvmOverloads constructor(
         if (_isSigningIn.value) return
         _isSigningIn.value = true
         viewModelScope.launch {
+            // Signing in with Google replaces this phone's anonymous identity, and that identity IS the
+            // pairing. So a phone that is already paired as a child must be unpaired first.
+            val pairedChild = rolePrefs.getString("device_role", null) == "CHILD" &&
+                policyRepository.getDevice()?.enrollmentStatus == EnrollmentStatus.ENROLLED
+            if (pairedChild) {
+                _statusMessage.value = "This phone is paired as a child device. Use Disconnect/Unpair first if you want to use it as a parent phone."
+                _isSigningIn.value = false
+                return@launch
+            }
             syncGateway.signInParentWithGoogle(activity)
                 .onSuccess { account ->
                     _parentAccountLabel.value = account.email ?: account.uid

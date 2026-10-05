@@ -42,9 +42,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 /**
  * Child-side pairing dialog. The primary path is scanning the parent's QR with the Google
@@ -59,21 +56,21 @@ fun ConnectToParentDialog(
     var qrJsonInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun startScan() {
-        val options = GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-            .build()
-        GmsBarcodeScanning.getClient(context, options)
-            .startScan()
-            .addOnSuccessListener { barcode ->
-                val raw = barcode.rawValue
-                if (raw.isNullOrBlank()) errorMessage = "QR কোড পড়া যায়নি। আবার চেষ্টা করুন।"
+    var showScanner by remember { mutableStateOf(false) }
+
+    // In-app scanner (CameraX + ZXing): it does not depend on a Google Play services module, which is
+    // missing or outdated on many tablets and made the old scanner open and close at once.
+    fun startScan() { showScanner = true }
+
+    if (showScanner) {
+        QrScannerDialog(
+            onResult = { raw ->
+                showScanner = false
+                if (raw.isBlank()) errorMessage = "QR কোড পড়া যায়নি। আবার চেষ্টা করুন।"
                 else onConnectWithQr(raw)
-            }
-            .addOnFailureListener { e ->
-                errorMessage = "স্ক্যান করা যায়নি: ${e.message ?: "unknown error"}"
-            }
-        // The user cancelling the scanner is not an error, so there is no cancel listener message.
+            },
+            onDismiss = { showScanner = false }
+        )
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(

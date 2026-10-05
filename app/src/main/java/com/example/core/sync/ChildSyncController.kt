@@ -55,7 +55,8 @@ class ChildSyncController(
 
     private fun now(): String = LocalTime.now().withNano(0).toString()
 
-    private val _linkLost = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    // replay = 1: a reset detected by the background service before the UI exists is still delivered to it.
+    private val _linkLost = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     /** Emits once when the parent has unlinked this device (local enrollment is already cleared). */
     val linkLost: SharedFlow<Unit> = _linkLost.asSharedFlow()
 
@@ -91,6 +92,7 @@ class ChildSyncController(
             return@coroutineScope
         }
         _status.value = "Connecting..."
+        _linkLost.resetReplayCache()   // a valid pairing exists again: forget any older "link lost" event
         val parentUid = device.parentId
         val childUid = device.deviceId
         // Firebase restores the saved sign-in a moment after start-up: give it a few seconds before judging.
