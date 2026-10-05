@@ -335,9 +335,10 @@ class MainViewModel @JvmOverloads constructor(
      * only when something was actually added.
      */
     private suspend fun syncInstalledApps() {
-        // A parent phone's policy describes the CHILD's apps (from the child's inventory),
-        // never the parent's own installed apps.
-        if (isParentRole()) return
+        // Only a CHILD phone lists its own apps. While the role is still undecided (first launch) or
+        // PARENT, this phone's installed apps must never enter the rules: a parent's rules describe the
+        // CHILD's apps (from the child's uploaded inventory).
+        if (rolePrefs.getString("device_role", null) != "CHILD") return
         mergeNewApps(installedAppsProvider.listLaunchableApps())
     }
 
@@ -356,6 +357,33 @@ class MainViewModel @JvmOverloads constructor(
                 version = currentPolicy.version + 1,
                 updatedAtEpochMs = System.currentTimeMillis(),
                 apps = currentPolicy.apps + newApps.associateBy { it.packageName },
+                schedules = schedules.associateBy { it.id }
+            )
+        )
+    }
+
+    /**
+     * Parent phone: makes the rules list match the CHILD's real installed apps.
+     * - apps the child has but we don't know yet are added as ALLOWED;
+     * - ALLOWED apps the child no longer has are dropped (stale / uninstalled);
+     * - apps with a real rule (LIMITED / BLOCKED) are always kept, so a reinstall can never silently lose a block.
+     */
+    private suspend fun mergeChildInventory(apps: List<InstalledApp>) {
+        if (apps.isEmpty()) return
+        val inventory = apps.associateBy { it.packageName }
+        val current = policyRepository.getCurrentPolicy()
+        val kept = current.apps.filter { (pkg, rule) -> pkg in inventory || rule.mode != RestrictionMode.ALLOWED }
+        val added = apps.filter { it.packageName !in current.apps }
+            .map { AppPolicy(it.packageName, it.displayName, RestrictionMode.ALLOWED) }
+        if (added.isEmpty() && kept.size == current.apps.size) return
+
+        val isFirstRun = current.apps.isEmpty() && current.schedules.isEmpty()
+        val schedules = if (isFirstRun) defaultSchedules() else current.schedules.values.toList()
+        policyRepository.applyNewPolicyAtomic(
+            Policy(
+                version = current.version + 1,
+                updatedAtEpochMs = System.currentTimeMillis(),
+                apps = kept + added.associateBy { it.packageName },
                 schedules = schedules.associateBy { it.id }
             )
         )
@@ -491,7 +519,7 @@ class MainViewModel @JvmOverloads constructor(
                 retrying {
                     _deviceInfo.map { it?.deviceId }.distinctUntilChanged()
                         .flatMapLatest { id -> if (id == null) flowOf(null) else syncGateway.observeInventory(id) }
-                        .collect { inv -> if (inv != null) mergeNewApps(inv.apps) }
+                        .collect { inv -> if (inv != null) mergeChildInventory(inv.apps) }
                 }
             }
         }
@@ -510,17 +538,23 @@ class MainViewModel @JvmOverloads constructor(
             return
         }
         val workingId = rolePrefs.getString(WORKING_COPY_KEY, null)
-        if (workingId == null || workingId == target.deviceId) {
-            // First child (or an update of the same child): the local rules already belong to it.
+        if (workingId == target.deviceId) {
+            // Local rules were already loaded from the server for this exact child (or edited by the parent since).
             rolePrefs.edit()
-                .putString(WORKING_COPY_KEY, target.deviceId)
                 .putString(SELECTED_CHILD_KEY, target.deviceId)
                 .apply()
             _selectedChildId.value = target.deviceId
             _deviceInfo.value = target
         } else {
+            // Never adopt whatever is in the local database as this child's data: it may hold this very
+            // phone's own apps/usage. Always load the child's real rules from the server first.
             _hasUnsentChanges.value = false
-            switchWorkingCopy(target)
+            // Offline right now? Keep trying instead of showing nothing (or, worse, stale local data).
+            var attempts = 0
+            while (!switchWorkingCopy(target) && attempts < 20 && _children.value.any { it.deviceId == target.deviceId }) {
+                attempts++
+                delay(15_000L)
+            }
         }
     }
 
@@ -1099,6 +1133,11 @@ class MainViewModel @JvmOverloads constructor(
             }
         } else if (role == AppMode.CHILD) {
             parentSyncJob?.cancel()
+            viewModelScope.launch {
+                try { syncInstalledApps() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    Log.e("MainViewModel", "Listing installed apps failed", e)
+                }
+            }
             if (syncGateway.isAvailable && _deviceInfo.value != null) ensureChildServiceRunning()
         }
         _statusMessage.value = if (role == AppMode.PARENT) "Configured as Parent Device" else "Configured as Child Device"
@@ -1235,6 +1274,6 @@ class MainViewModel @JvmOverloads constructor(
     private companion object {
         const val PAIRING_VALIDITY_MINUTES = 10L
         const val SELECTED_CHILD_KEY = "selected_child_id"
-        const val WORKING_COPY_KEY = "working_copy_child_id"
+        const val WORKING_COPY_KEY = "working_copy_child_id_v2"   // v2: forces one clean reload from the server
     }
 }
