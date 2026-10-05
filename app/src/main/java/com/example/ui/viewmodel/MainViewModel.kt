@@ -260,7 +260,7 @@ class MainViewModel @JvmOverloads constructor(
             childSync.linkLost.collect {
                 _isChildConnectedToParent.value = false
                 _deviceInfo.value = null
-                _statusMessage.value = "The parent unlinked this device."
+                _statusMessage.value = "This device is no longer linked. Scan the parent's QR code to connect again."
             }
         }
     }
@@ -293,7 +293,7 @@ class MainViewModel @JvmOverloads constructor(
             _deviceInfo.value = currentDevice
             _isChildConnectedToParent.value = currentDevice?.enrollmentStatus == EnrollmentStatus.ENROLLED
             if (currentDevice != null && currentDevice.enrollmentStatus == EnrollmentStatus.ENROLLED) {
-                _connectedParentName.value = "Parent's Phone (${currentDevice.parentId})"
+                _connectedParentName.value = "Parent's Phone"
             }
             refreshDeviceOwnerFlags()
 
