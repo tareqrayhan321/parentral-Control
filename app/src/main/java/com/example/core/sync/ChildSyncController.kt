@@ -93,9 +93,17 @@ class ChildSyncController(
         _status.value = "Connecting..."
         val parentUid = device.parentId
         val childUid = device.deviceId
+        // Firebase restores the saved sign-in a moment after start-up: give it a few seconds before judging.
+        var waited = 0
+        while (gateway.currentUid() == null && waited < 5) { delay(1_000L); waited++ }
         if (gateway.currentUid() != childUid) {
-            Log.w(TAG, "Signed-in uid does not match enrolled device id; sync disabled.")
-            _status.value = "Sync stopped: this phone's sign-in does not match the pairing. Unpair and pair again."
+            // The sign-in this phone paired with is gone (signed out, app data cleared, restored backup...),
+            // so the old pairing can never work again. Reset it so the phone goes back to "scan the QR code"
+            // instead of being stuck on a dead link.
+            Log.w(TAG, "Signed-in uid does not match enrolled device id; resetting the pairing.")
+            _status.value = "Pairing reset: scan the parent's QR code again."
+            enrollmentManager.unenrollDevice()
+            _linkLost.emit(Unit)
             return@coroutineScope
         }
 
