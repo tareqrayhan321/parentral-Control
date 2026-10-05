@@ -177,6 +177,9 @@ fun ParentDashboardScreen(
     onChangePinRequested: () -> Unit
 ) {
     var showAddScheduleDialog by remember { mutableStateOf(false) }
+    // True while the full-screen "Add habit" form is open: it needs the whole screen (no floating nav bar).
+    var habitFormOpen by remember { mutableStateOf(false) }
+    val fullScreenHabitForm = currentTab == ParentTab.HABITS && habitFormOpen
 
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
@@ -231,7 +234,7 @@ fun ParentDashboardScreen(
           Box(
               modifier = Modifier
                   .fillMaxSize()
-                  .padding(bottom = if (currentTab == ParentTab.DASHBOARD) 0.dp else 84.dp)
+                  .padding(bottom = if (currentTab == ParentTab.DASHBOARD || fullScreenHabitForm) 0.dp else 84.dp)
           ) {
             when (currentTab) {
                 ParentTab.DASHBOARD -> ParentHomeTab(
@@ -277,7 +280,7 @@ fun ParentDashboardScreen(
                     onCancelChildSwitch = onCancelChildSwitch,
                     observeChildMinutes = observeChildMinutes
                 )
-                ParentTab.HABITS -> HabitsTabContent()
+                ParentTab.HABITS -> HabitsTabContent(onFormVisibilityChange = { habitFormOpen = it })
                 ParentTab.APPS -> AppsTabContent(
                     policy = policy,
                     todayUsage = todayUsage,
@@ -315,11 +318,13 @@ fun ParentDashboardScreen(
                 )
             }
           }
-          FloatingNavBar(
-              currentTab = currentTab,
-              onSelectTab = onSelectTab,
-              modifier = Modifier.align(Alignment.BottomCenter)
-          )
+          if (!fullScreenHabitForm) {
+              FloatingNavBar(
+                  currentTab = currentTab,
+                  onSelectTab = onSelectTab,
+                  modifier = Modifier.align(Alignment.BottomCenter)
+              )
+          }
         }
     }
 

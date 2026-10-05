@@ -1,6 +1,17 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.app.Activity
+import android.content.ContextWrapper
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -170,9 +181,44 @@ private fun frequencyLabel(f: HabitFrequency): String = when (f) {
     HabitFrequency.MONTHLY -> "Monthly"
 }
 
+/** The Habits screen is always light, so keep dark status-bar icons while it is visible (restored on exit). */
+@Composable
+private fun StatusBarDarkIcons() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        var ctx = view.context
+        while (ctx is ContextWrapper && ctx !is Activity) ctx = ctx.baseContext
+        val window = (ctx as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = true
+        onDispose {
+            if (controller != null && previous != null) controller.isAppearanceLightStatusBars = previous
+        }
+    }
+}
+
+@Composable
+private fun MetaChip(text: String) {
+    Text(
+        text,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = InkMuted,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Track)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+
+/**
+ * [onFormVisibilityChange] tells the host when the full-screen "Add habit" form is open,
+ * so it can hide its floating navigation bar and give the form the whole screen.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HabitsTabContent() {
+fun HabitsTabContent(onFormVisibilityChange: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val store = remember { HabitStore(context) }
     var habits by remember { mutableStateOf(store.load()) }
@@ -186,37 +232,48 @@ fun HabitsTabContent() {
     val percent = if (dueHabits.isEmpty()) 0 else doneCount * 100 / dueHabits.size
     val streak = computeStreak(habits, today)
 
+    val formOpen = draft != null
+    val latestFormCallback by rememberUpdatedState(onFormVisibilityChange)
+    LaunchedEffect(formOpen) { latestFormCallback(formOpen) }
+    DisposableEffect(Unit) { onDispose { latestFormCallback(false) } }
+
+    StatusBarDarkIcons()
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(PageBg)
     ) {
-        // ---------- Header ----------
-        Column(modifier = Modifier.fillMaxWidth().background(Color.White)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Habit Tracker", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Daily routines & consistency", fontSize = 15.sp, color = InkMuted)
-                }
-                Button(
-                    onClick = { draft = HabitDraft() },
-                    modifier = Modifier.height(52.dp).testTag("habit_add_button"),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Navy, contentColor = Color.White)
+        // ---------- Header (white fills the status bar area; the text sits below it) ----------
+        Box(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Habit Tracker", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Spacer(Modifier.height(2.dp))
+                        Text("Daily routines & consistency", fontSize = 13.sp, color = InkMuted)
+                    }
+                    Button(
+                        onClick = { draft = HabitDraft() },
+                        modifier = Modifier.height(44.dp).testTag("habit_add_button"),
+                        shape = CircleShape,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Navy, contentColor = Color.White)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Border))
             }
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Border))
         }
 
         LazyColumn(
@@ -224,46 +281,47 @@ fun HabitsTabContent() {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
                 start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // ---------- Week strip ----------
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(22.dp))
                         .background(Color.White)
-                        .border(1.dp, Border, RoundedCornerShape(24.dp))
-                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .border(1.dp, Border, RoundedCornerShape(22.dp))
+                        .padding(horizontal = 6.dp, vertical = 8.dp)
                 ) {
                     (-3L..3L).map { today.plusDays(it) }.forEach { day ->
                         val isSel = day == selected
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(if (isSel) Navy else Color.Transparent)
                                 .clickable { selected = day }
-                                .padding(vertical = 14.dp),
+                                .padding(vertical = 10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
                                 day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
-                                fontSize = 14.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (isSel) Color.White else InkMuted
+                                letterSpacing = 0.5.sp,
+                                color = if (isSel) Color.White.copy(alpha = 0.8f) else InkMuted
                             )
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(6.dp))
                             Text(
                                 day.dayOfMonth.toString(),
-                                fontSize = 22.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isSel) Color.White else Ink
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(6.dp))
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(5.dp)
                                     .clip(CircleShape)
                                     .background(
                                         when {
@@ -284,58 +342,71 @@ fun HabitsTabContent() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.White)
-                        .border(1.dp, Border, RoundedCornerShape(24.dp))
+                        .background(Brush.linearGradient(listOf(Navy, Color(0xFF15607F))))
                         .padding(20.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(StreakBg)
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .background(Color.White.copy(alpha = 0.16f))
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 Icons.Outlined.LocalFireDepartment,
                                 contentDescription = null,
-                                tint = StreakFg,
-                                modifier = Modifier.size(22.dp)
+                                tint = Color(0xFFFFB454),
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text("$streak Day Streak", color = StreakFg, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(6.dp))
+                            Text("$streak Day Streak", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.weight(1f))
-                        Text("${habits.size} Active Habits", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Text(
+                            "${habits.size} Active Habits",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
                     }
                     Spacer(Modifier.height(18.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("$percent%", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Done",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(bottom = 7.dp)
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "$doneCount of ${dueHabits.size} completed",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(bottom = 7.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(10.dp)
+                            .height(8.dp)
                             .clip(CircleShape)
-                            .background(Track)
+                            .background(Color.White.copy(alpha = 0.22f))
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(percent / 100f)
                                 .fillMaxHeight()
                                 .clip(CircleShape)
-                                .background(Teal)
+                                .background(Color(0xFF3DDBB8))
                         )
                     }
-                    Spacer(Modifier.height(18.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "$doneCount of ${dueHabits.size} completed",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Ink,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text("$percent% Done", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Teal)
-                    }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     Text(
                         text = when {
                             habits.isEmpty() -> "Start your journey with a positive habit today!"
@@ -344,9 +415,9 @@ fun HabitsTabContent() {
                             doneCount > 0 -> "Great progress — keep going!"
                             else -> "Tick off your first habit to get started."
                         },
-                        fontSize = 17.sp,
+                        fontSize = 13.sp,
                         fontStyle = FontStyle.Italic,
-                        color = InkMuted
+                        color = Color.White.copy(alpha = 0.85f)
                     )
                 }
             }
@@ -354,21 +425,22 @@ fun HabitsTabContent() {
             // ---------- Checklist ----------
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         "HABITS CHECKLIST",
-                        fontSize = 18.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
+                        letterSpacing = 1.2.sp,
                         color = Color(0xFF3D5163),
                         modifier = Modifier.weight(1f)
                     )
                     Text(
                         if (selected == today) "Today"
                         else selected.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH)),
-                        fontSize = 16.sp,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = InkMuted
                     )
                 }
@@ -378,25 +450,30 @@ fun HabitsTabContent() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(28.dp))
+                            .clip(RoundedCornerShape(24.dp))
                             .background(Color.White)
-                            .border(1.dp, Border, RoundedCornerShape(28.dp))
-                            .padding(horizontal = 24.dp, vertical = 56.dp),
+                            .border(1.dp, Border, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 24.dp, vertical = 36.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            Icons.Outlined.AutoAwesome,
-                            contentDescription = null,
-                            tint = Navy,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(Modifier.height(24.dp))
-                        Text("No habits yet", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Spacer(Modifier.height(14.dp))
+                        Box(
+                            modifier = Modifier.size(72.dp).clip(CircleShape).background(IconBox),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Outlined.AutoAwesome,
+                                contentDescription = null,
+                                tint = Navy,
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text("No habits yet", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             "Tap the \"+ Add\" button above or choose an idea below to build positive daily habits.",
-                            fontSize = 18.sp,
-                            lineHeight = 28.sp,
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp,
                             color = InkMuted,
                             textAlign = TextAlign.Center
                         )
@@ -406,7 +483,7 @@ fun HabitsTabContent() {
                 item {
                     Text(
                         "No habits are scheduled for this day.",
-                        fontSize = 16.sp,
+                        fontSize = 14.sp,
                         color = InkMuted,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                         textAlign = TextAlign.Center
@@ -420,21 +497,21 @@ fun HabitsTabContent() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(22.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(Color.White)
-                                .border(1.dp, Border, RoundedCornerShape(22.dp))
+                                .border(1.dp, if (done) Teal.copy(alpha = 0.45f) else Border, RoundedCornerShape(20.dp))
                                 .combinedClickable(
                                     onClick = {
                                         if (canToggle) habits = store.setDone(habit.id, selected, !done)
                                     },
                                     onLongClick = { toDelete = habit }
                                 )
-                                .padding(16.dp),
+                                .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(48.dp)
+                                    .size(46.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(IconBox),
                                 contentAlignment = Alignment.Center
@@ -445,7 +522,7 @@ fun HabitsTabContent() {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     habit.title,
-                                    fontSize = 17.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (done) InkMuted else Ink,
                                     textDecoration = if (done) TextDecoration.LineThrough else null,
@@ -455,20 +532,32 @@ fun HabitsTabContent() {
                                 if (habit.description.isNotBlank()) {
                                     Text(
                                         habit.description,
-                                        fontSize = 14.sp,
+                                        fontSize = 13.sp,
                                         color = InkMuted,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                Text(
-                                    buildString {
-                                        append(frequencyLabel(habit.frequency))
-                                        if (habit.reminderEnabled) append(" • ").append(formatTime(habit.hour, habit.minute))
-                                    },
-                                    fontSize = 12.sp,
-                                    color = InkMuted
-                                )
+                                Spacer(Modifier.height(6.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    MetaChip(frequencyLabel(habit.frequency))
+                                    if (habit.reminderEnabled) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Outlined.Schedule,
+                                            contentDescription = null,
+                                            tint = InkMuted,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(
+                                            formatTime(habit.hour, habit.minute),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = InkMuted
+                                        )
+                                    }
+                                }
                             }
                             Spacer(Modifier.width(10.dp))
                             Box(
@@ -495,22 +584,26 @@ fun HabitsTabContent() {
 
             // ---------- Habit Builder Ideas ----------
             item {
-                Column(modifier = Modifier.padding(top = 20.dp)) {
-                    Text("Habit Builder Ideas", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Tap any template to add to your daily routine", fontSize = 16.sp, color = InkMuted)
+                Column(modifier = Modifier.padding(top = 16.dp)) {
+                    Text("Habit Builder Ideas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Tap any template to add to your daily routine", fontSize = 13.sp, color = InkMuted)
                 }
             }
             Templates.chunked(2).forEach { pair ->
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         pair.forEach { t ->
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(22.dp))
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(20.dp))
                                     .background(Color.White)
-                                    .border(1.dp, Border, RoundedCornerShape(22.dp))
+                                    .border(1.dp, Border, RoundedCornerShape(20.dp))
                                     .clickable {
                                         draft = HabitDraft(
                                             title = t.title,
@@ -522,36 +615,49 @@ fun HabitsTabContent() {
                                             iconKey = t.iconKey
                                         )
                                     }
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(14.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(IconBox),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(iconFor(t.iconKey), contentDescription = null, tint = Navy)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(IconBox),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(iconFor(t.iconKey), contentDescription = null, tint = Navy)
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Box(
+                                        modifier = Modifier.size(26.dp).clip(CircleShape).background(Teal.copy(alpha = 0.14f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = Teal,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        t.title,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Ink,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        t.description,
-                                        fontSize = 12.sp,
-                                        color = InkMuted,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    t.title,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Ink,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    t.description,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    color = InkMuted,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
@@ -560,6 +666,8 @@ fun HabitsTabContent() {
         }
     }
 
+    // Full-screen form drawn inside the app window (not a Dialog), so it gets the real status-bar and
+    // navigation-bar insets: header fills the status bar, and the button always sits above the system buttons.
     draft?.let { d ->
         AddHabitScreen(
             initial = d,
@@ -583,6 +691,7 @@ fun HabitsTabContent() {
             }
         )
     }
+    }
 
     toDelete?.let { h ->
         AlertDialog(
@@ -601,7 +710,7 @@ fun HabitsTabContent() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddHabitScreen(
     initial: HabitDraft,
@@ -618,6 +727,8 @@ private fun AddHabitScreen(
     var iconKey by remember { mutableStateOf(initial.iconKey) }
     var showTimePicker by remember { mutableStateOf(false) }
     var titleError by remember { mutableStateOf(false) }
+
+    BackHandler(onBack = onClose)
 
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -652,111 +763,135 @@ private fun AddHabitScreen(
         unfocusedBorderColor = Border
     )
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-    ) {
-        Surface(modifier = Modifier.fillMaxSize(), color = PageBg) {
-            Column(modifier = Modifier.fillMaxSize().imePadding()) {
-                // Top bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White)
-                        .statusBarsPadding()
-                        .height(64.dp)
-                ) {
-                    IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink)
-                    }
-                    Text(
-                        "Add New Habit",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Ink,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 20.dp)
-                ) {
-                    FieldLabel("Habit Title *")
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it; titleError = false },
-                        modifier = Modifier.fillMaxWidth().testTag("habit_title_field"),
-                        singleLine = true,
-                        isError = titleError,
-                        supportingText = if (titleError) {
-                            { Text("Please enter a habit title") }
-                        } else null,
-                        shape = RoundedCornerShape(20.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = Ink),
-                        keyboardOptions = KeyboardOptions.Default,
-                        colors = fieldColors
-                    )
-                    Spacer(Modifier.height(24.dp))
-
-                    FieldLabel("Description")
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        modifier = Modifier.fillMaxWidth().testTag("habit_description_field"),
-                        minLines = 2,
-                        shape = RoundedCornerShape(20.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = Ink),
-                        colors = fieldColors
-                    )
-                    Spacer(Modifier.height(24.dp))
-
-                    FieldLabel("Frequency")
-                    Row(
+    Surface(modifier = Modifier.fillMaxSize(), color = PageBg) {
+        Column(modifier = Modifier.fillMaxSize().imePadding()) {
+            // ---------- Top bar: white fills the status bar area, title stays below it ----------
+            Box(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+                Column {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Track)
-                            .border(1.dp, Border, RoundedCornerShape(20.dp))
-                            .padding(6.dp)
+                            .statusBarsPadding()
+                            .height(60.dp)
                     ) {
-                        HabitFrequency.values().forEach { f ->
-                            val sel = f == frequency
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .then(
-                                        if (sel) Modifier.shadow(3.dp, RoundedCornerShape(16.dp)) else Modifier
-                                    )
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (sel) Color.White else Color.Transparent)
-                                    .clickable { frequency = f }
-                                    .padding(vertical = 18.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    frequencyLabel(f),
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (sel) Navy else Color(0xFF5F7A93)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 12.dp)
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Track)
+                                .clickable(onClick = onClose),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Ink,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Text(
+                            "Add New Habit",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Ink,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Border))
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 20.dp)
+            ) {
+                FieldLabel("Habit Title *")
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it; titleError = false },
+                    modifier = Modifier.fillMaxWidth().testTag("habit_title_field"),
+                    singleLine = true,
+                    isError = titleError,
+                    supportingText = if (titleError) {
+                        { Text("Please enter a habit title") }
+                    } else null,
+                    shape = RoundedCornerShape(16.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = Ink),
+                    keyboardOptions = KeyboardOptions.Default,
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(20.dp))
+
+                FieldLabel("Description")
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    modifier = Modifier.fillMaxWidth().testTag("habit_description_field"),
+                    minLines = 2,
+                    shape = RoundedCornerShape(16.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = Ink),
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(20.dp))
+
+                FieldLabel("Frequency")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Track)
+                        .border(1.dp, Border, RoundedCornerShape(16.dp))
+                        .padding(5.dp)
+                ) {
+                    HabitFrequency.values().forEach { f ->
+                        val sel = f == frequency
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (sel) Modifier.shadow(2.dp, RoundedCornerShape(12.dp)) else Modifier
                                 )
-                            }
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (sel) Color.White else Color.Transparent)
+                                .clickable { frequency = f }
+                                .padding(vertical = 13.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                frequencyLabel(f),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (sel) Navy else Color(0xFF5F7A93)
+                            )
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
+                }
+                Spacer(Modifier.height(20.dp))
 
-                    FieldLabel("Reminder Alarm")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                FieldLabel("Reminder Alarm")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .border(1.dp, Border, RoundedCornerShape(16.dp))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             "Wakes the screen with a full alert when it's time, e.g. a prayer time reminder.",
-                            fontSize = 16.sp,
-                            lineHeight = 26.sp,
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp,
                             color = InkMuted,
                             modifier = Modifier.weight(1f)
                         )
-                        Spacer(Modifier.width(16.dp))
+                        Spacer(Modifier.width(12.dp))
                         Switch(
                             checked = reminder,
                             onCheckedChange = {
@@ -772,56 +907,74 @@ private fun AddHabitScreen(
                         )
                     }
                     if (reminder) {
-                        Spacer(Modifier.height(14.dp))
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Border))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Color.White)
-                                .border(1.dp, Border, RoundedCornerShape(20.dp))
                                 .clickable { showTimePicker = true }
-                                .padding(horizontal = 20.dp, vertical = 22.dp),
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Icon(
+                                Icons.Outlined.Schedule,
+                                contentDescription = "Pick time",
+                                tint = Teal,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
                             Text(
-                                formatTime(hour, minute),
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Ink,
+                                "Time",
+                                fontSize = 14.sp,
+                                color = InkMuted,
                                 modifier = Modifier.weight(1f)
                             )
-                            Icon(Icons.Outlined.Schedule, contentDescription = "Pick time", tint = InkMuted)
+                            Text(
+                                formatTime(hour, minute),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Navy
+                            )
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
+                }
+                Spacer(Modifier.height(20.dp))
 
-                    FieldLabel("Select Icon")
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                FieldLabel("Select Icon")
+                val perRow = 6
+                HabitIcons.chunked(perRow).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        HabitIcons.forEach { (key, vector) ->
+                        rowItems.forEach { (key, vector) ->
                             val sel = key == iconKey
                             Box(
                                 modifier = Modifier
-                                    .size(46.dp)
+                                    .weight(1f)
+                                    .aspectRatio(1f)
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(if (sel) Color(0xFFE4ECF3) else Color.White)
+                                    .background(if (sel) Navy else Color.White)
                                     .border(
-                                        if (sel) 1.5.dp else 1.dp,
+                                        1.dp,
                                         if (sel) Navy else Border,
                                         RoundedCornerShape(14.dp)
                                     )
                                     .clickable { iconKey = key },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(vector, contentDescription = null, tint = Navy)
+                                Icon(vector, contentDescription = null, tint = if (sel) Color.White else Navy)
                             }
                         }
+                        repeat(perRow - rowItems.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(10.dp))
                 }
+                Spacer(Modifier.height(12.dp))
+            }
 
+            // ---------- Bottom bar: always above the system navigation buttons ----------
+            Column(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Border))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -848,12 +1001,12 @@ private fun AddHabitScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(64.dp)
+                            .height(54.dp)
                             .testTag("habit_create_button"),
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Navy, contentColor = Color.White)
                     ) {
-                        Text("Create Habit", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Create Habit", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -878,10 +1031,10 @@ private fun AddHabitScreen(
 private fun FieldLabel(text: String) {
     Text(
         text,
-        fontSize = 18.sp,
+        fontSize = 15.sp,
         fontWeight = FontWeight.Bold,
         color = Ink,
-        modifier = Modifier.padding(bottom = 12.dp)
+        modifier = Modifier.padding(bottom = 8.dp)
     )
 }
 
