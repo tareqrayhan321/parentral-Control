@@ -6,10 +6,14 @@ import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.core.apps.InstalledApp
 import com.example.core.model.Policy
 import com.example.core.policy.PolicyControls
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
@@ -56,12 +60,41 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         check(resId != 0) { "default_web_client_id missing: enable Google sign-in in Firebase and re-download google-services.json." }
         val webClientId = context.getString(resId)
 
-        val option = GetGoogleIdOption.Builder()
+        val credentialManager = CredentialManager.create(activity)
+
+        // 1) The explicit "Sign in with Google" flow: it is started by the user's tap, so Google never
+        //    suppresses it. (The One Tap flow below can be switched off on a device with
+        //    "16: [28439] User disabled the feature", e.g. after it was dismissed a few times.)
+        // 2) One Tap as a fallback.
+        val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
+        val oneTapOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
             .setServerClientId(webClientId)
             .build()
-        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-        val result = CredentialManager.create(activity).getCredential(activity, request)
+
+        val result = try {
+            credentialManager.getCredential(
+                activity,
+                GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+            )
+        } catch (e: GetCredentialCancellationException) {
+            throw IllegalStateException("Sign-in was cancelled.", e)
+        } catch (e: GetCredentialException) {
+            Log.w("FirebaseSyncGateway", "Sign in with Google failed, trying One Tap", e)
+            try {
+                credentialManager.getCredential(
+                    activity,
+                    GetCredentialRequest.Builder().addCredentialOption(oneTapOption).build()
+                )
+            } catch (e2: GetCredentialCancellationException) {
+                throw IllegalStateException("Sign-in was cancelled.", e2)
+            } catch (e2: NoCredentialException) {
+                throw IllegalStateException(
+                    "No Google account found on this device. Open Settings > Accounts > Add account > Google, " +
+                        "add an account, then try again.", e2
+                )
+            }
+        }
 
         val cred = result.credential
         check(cred is CustomCredential && cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
