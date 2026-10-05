@@ -252,7 +252,10 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
 
         var user = auth.currentUser
         if (user != null && !user.isAnonymous) {
-            error("This phone is signed in as a parent. Use a different phone, or sign out first.")
+            // A child phone must be an ANONYMOUS user (that is how the backend recognises it). A leftover
+            // Google sign-in on this phone must not block pairing, so drop it and continue.
+            auth.signOut()
+            user = null
         }
         if (user == null) user = auth.signInAnonymously().await().user ?: error("Anonymous sign-in failed.")
         val childUid = user.uid
