@@ -206,16 +206,21 @@ class RoomPolicyRepository(
     }
 
     override suspend fun saveDevice(device: ChildDevice) {
-        childDeviceDao.saveDevice(
-            ChildDeviceEntity(
-                deviceId = device.deviceId,
-                parentId = device.parentId,
-                deviceName = device.deviceName,
-                enrollmentStatus = device.enrollmentStatus.name,
-                policyVersion = device.policyVersion,
-                lastSynchronizedAt = device.lastSeenEpochMs
+        // One row only: saving the real paired device replaces the local placeholder (and any leftover row
+        // from an earlier pairing attempt) instead of sitting next to it.
+        database.withTransaction {
+            childDeviceDao.deleteOthers(device.deviceId)
+            childDeviceDao.saveDevice(
+                ChildDeviceEntity(
+                    deviceId = device.deviceId,
+                    parentId = device.parentId,
+                    deviceName = device.deviceName,
+                    enrollmentStatus = device.enrollmentStatus.name,
+                    policyVersion = device.policyVersion,
+                    lastSynchronizedAt = device.lastSeenEpochMs
+                )
             )
-        )
+        }
     }
 
     override suspend fun recordTodayUsage(packageName: String, dateString: String, minutes: Int) {

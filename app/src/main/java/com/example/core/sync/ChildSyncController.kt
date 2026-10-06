@@ -5,7 +5,6 @@ import android.provider.Settings
 import android.util.Log
 import com.example.core.apps.InstalledAppsProvider
 import com.example.core.database.repository.PolicyRepository
-import com.example.core.model.EnrollmentStatus
 import com.example.core.policy.PolicyControls
 import com.example.core.usage.UsageRepository
 import java.time.LocalDate
@@ -87,7 +86,8 @@ class ChildSyncController(
     private suspend fun runSync() = coroutineScope {
         if (!gateway.isAvailable) { _status.value = "Firebase is not configured in this build"; return@coroutineScope }
         val device = repository.getDevice()
-        if (device == null || device.enrollmentStatus != EnrollmentStatus.ENROLLED) {
+        // isPaired = ENROLLED *and* bound to a parent. The local placeholder row (empty parentId) is not a pairing.
+        if (device == null || !device.isPaired) {
             _status.value = "Not paired with a parent"
             return@coroutineScope
         }
@@ -95,18 +95,24 @@ class ChildSyncController(
         _linkLost.resetReplayCache()   // a valid pairing exists again: forget any older "link lost" event
         val parentUid = device.parentId
         val childUid = device.deviceId
-        // Firebase restores the saved sign-in a moment after start-up: give it a few seconds before judging.
+        // Firebase restores the saved sign-in a moment after start-up (slowly on old tablets): wait before judging.
         var waited = 0
-        while (gateway.currentUid() == null && waited < 5) { delay(1_000L); waited++ }
-        if (gateway.currentUid() != childUid) {
+        while (gateway.currentUid() == null && waited < SIGN_IN_WAIT_SECONDS) { delay(1_000L); waited++ }
+        val signedInUid = gateway.currentUid()
+        if (signedInUid != childUid) {
             // The sign-in this phone paired with is gone (signed out, app data cleared, restored backup...),
             // so the old pairing can never work again. Reset it so the phone goes back to "scan the QR code"
             // instead of being stuck on a dead link.
-            Log.w(TAG, "Signed-in uid does not match enrolled device id; resetting the pairing.")
+            Log.w(TAG, "Signed-in uid (${signedInUid?.take(6)}) does not match enrolled device id (${childUid.take(6)}); resetting the pairing.")
             _status.value = "Pairing reset: scan the parent's QR code again."
             enrollmentManager.unenrollDevice()
             _linkLost.emit(Unit)
             return@coroutineScope
+        }
+        // The acknowledged REMOTE policy version belongs to ONE pairing. A new pairing starts at remote version 1,
+        // so a number left over from an earlier pairing would make every new policy look "stale" and be ignored.
+        if (prefs.getString(KEY_ACKED_DEVICE, null) != childUid) {
+            prefs.edit().putInt(KEY_ACKED, 0).putString(KEY_ACKED_DEVICE, childUid).apply()
         }
 
         launch { watchPolicy(parentUid, childUid) }
@@ -248,6 +254,8 @@ class ChildSyncController(
     companion object {
         private const val TAG = "ChildSyncController"
         private const val KEY_ACKED = "acked_remote_version"
+        private const val KEY_ACKED_DEVICE = "acked_remote_version_device"
+        private const val SIGN_IN_WAIT_SECONDS = 20
         private const val HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000L
         private const val RETRY_DELAY_MS = 30_000L
         private const val USAGE_INTERVAL_MS = 5 * 60 * 1000L

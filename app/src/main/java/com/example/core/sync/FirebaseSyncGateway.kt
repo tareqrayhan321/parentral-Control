@@ -260,6 +260,13 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
         if (user == null) user = auth.signInAnonymously().await().user ?: error("Anonymous sign-in failed.")
         val childUid = user.uid
 
+        // A previous attempt may have created the device doc on the server while this phone lost its local
+        // state. The link is then already intact, and the rules do not allow a second claim for the same uid
+        // (the doc exists, so the batch would be an update the rules forbid). Re-adopt it: no token needed,
+        // nothing is granted that this uid did not already have.
+        val existing = deviceRef(qr.parentUid, childUid).get(com.google.firebase.firestore.Source.SERVER).await()
+        if (existing.exists()) return@runCatching ClaimResult(qr.parentUid, childUid)
+
         // One batch: claim the token AND create the device doc. Rules verify both together.
         val batch = db.batch()
         batch.update(

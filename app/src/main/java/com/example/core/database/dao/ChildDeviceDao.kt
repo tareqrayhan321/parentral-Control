@@ -10,10 +10,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ChildDeviceDao {
 
-    @Query("SELECT * FROM child_device LIMIT 1")
+    // ORDER BY is deliberate. A phone can hold two rows: the local placeholder written by the first policy
+    // apply (empty parentId) and the real paired device. A bare LIMIT 1 returns the OLDEST row, i.e. the
+    // placeholder, so sync compared the Firebase uid with "local_child_device" and stopped.
+    // Order: real parent-bound rows first, enrolled before unenrolled, most recent first.
+    @Query("SELECT * FROM child_device ORDER BY (parentId = '') ASC, (enrollmentStatus = 'ENROLLED') DESC, lastSynchronizedAt DESC, deviceId ASC LIMIT 1")
     fun observeCurrentDevice(): Flow<ChildDeviceEntity?>
 
-    @Query("SELECT * FROM child_device LIMIT 1")
+    @Query("SELECT * FROM child_device ORDER BY (parentId = '') ASC, (enrollmentStatus = 'ENROLLED') DESC, lastSynchronizedAt DESC, deviceId ASC LIMIT 1")
     suspend fun getCurrentDevice(): ChildDeviceEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -24,4 +28,8 @@ interface ChildDeviceDao {
 
     @Query("DELETE FROM child_device")
     suspend fun clearDevice()
+
+    /** Keeps the table at ONE row: removes every device row except [deviceId]. */
+    @Query("DELETE FROM child_device WHERE deviceId != :deviceId")
+    suspend fun deleteOthers(deviceId: String)
 }
