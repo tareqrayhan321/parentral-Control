@@ -161,7 +161,7 @@ class MainViewModel @JvmOverloads constructor(
     private val _isMandatoryDnsEnforced = MutableStateFlow(true)
     val isMandatoryDnsEnforced: StateFlow<Boolean> = _isMandatoryDnsEnforced.asStateFlow()
 
-    private val _enforcedDnsHost = MutableStateFlow("family-filter-dns.cleanbrowsing.org")
+    private val _enforcedDnsHost = MutableStateFlow("medium.kahfguard.com")
     val enforcedDnsHost: StateFlow<String> = _enforcedDnsHost.asStateFlow()
 
     private val _statusMessage = MutableStateFlow<String?>(null)

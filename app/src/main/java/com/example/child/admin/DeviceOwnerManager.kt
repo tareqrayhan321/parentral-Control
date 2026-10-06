@@ -4,7 +4,9 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.os.Build
+import android.content.pm.PackageManager
 import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
 
 interface DeviceOwnerManager {
@@ -124,8 +126,8 @@ class AndroidDeviceOwnerManager(
     }
 
     override fun getEnforcedDnsHost(): String {
-        return prefs.getString("mandatory_dns_host", "family-filter-dns.cleanbrowsing.org")
-            ?: "family-filter-dns.cleanbrowsing.org"
+        return prefs.getString("mandatory_dns_host", "medium.kahfguard.com")
+            ?: "medium.kahfguard.com"
     }
 
     override fun setMandatoryDns(enabled: Boolean, dnsHost: String): Boolean {
@@ -142,8 +144,9 @@ class AndroidDeviceOwnerManager(
      */
     private fun applyPrivateDns(enabled: Boolean, dnsHost: String): Boolean {
         if (!isDeviceOwner() || dpm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Log.w(TAG, "Mandatory DNS not enforced: Device Owner / Android 10+ required.")
-            return false
+            // No Device Owner: use the one-time adb-granted WRITE_SECURE_SETTINGS permission instead.
+            // This sets Private DNS but cannot lock the Settings screen.
+            return applyPrivateDnsViaSecureSettings(enabled, dnsHost)
         }
         return try {
             if (enabled) {
@@ -173,9 +176,42 @@ class AndroidDeviceOwnerManager(
         }
     }
 
+    /** True when `adb shell pm grant PACKAGE android.permission.WRITE_SECURE_SETTINGS` was run once. */
+    private fun hasWriteSecureSettings(): Boolean =
+        context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun applyPrivateDnsViaSecureSettings(enabled: Boolean, dnsHost: String): Boolean {
+        if (!hasWriteSecureSettings()) {
+            Log.w(TAG, "Mandatory DNS not enforced: neither Device Owner nor WRITE_SECURE_SETTINGS.")
+            return false
+        }
+        return try {
+            val cr = context.contentResolver
+            if (enabled) {
+                // Host first, then mode: avoids a moment where mode=hostname has an empty host.
+                val hostOk = Settings.Global.putString(cr, "private_dns_specifier", dnsHost)
+                val modeOk = Settings.Global.putString(cr, "private_dns_mode", "hostname")
+                Log.i(TAG, "Private DNS set via secure settings: $dnsHost (host=$hostOk, mode=$modeOk)")
+                hostOk && modeOk
+            } else {
+                Settings.Global.putString(cr, "private_dns_mode", "opportunistic")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed writing Private DNS via secure settings", e)
+            false
+        }
+    }
+
     override fun reassertMandatoryDns(): Boolean {
         if (!isMandatoryDnsEnforced()) return true
-        if (!isDeviceOwner() || dpm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (!isDeviceOwner() || dpm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val host = getEnforcedDnsHost()
+            val cr = context.contentResolver
+            val inSync = Settings.Global.getString(cr, "private_dns_mode") == "hostname" &&
+                Settings.Global.getString(cr, "private_dns_specifier") == host
+            return inSync || applyPrivateDnsViaSecureSettings(true, host)
+        }
         val host = getEnforcedDnsHost()
         val inSync = try {
             dpm.getGlobalPrivateDnsMode(adminComponent) == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME &&

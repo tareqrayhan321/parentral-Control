@@ -13,6 +13,16 @@ data class DnsProvider(
     val safeSearch: Boolean = true
 ) {
     companion object {
+        val KAHF_GUARD_MEDIUM = DnsProvider(
+            id = "kahf_medium",
+            name = "Kahf Guard (Moderate)",
+            host = "medium.kahfguard.com",
+            description = "Blocks harmful, adult and unsafe sites and enforces Safe Search on Google and Bing.",
+            blocksAdult = true,
+            blocksMalware = true,
+            safeSearch = true
+        )
+
         val CLEANBROWSING_FAMILY = DnsProvider(
             id = "cleanbrowsing",
             name = "CleanBrowsing Family Filter",
@@ -54,6 +64,7 @@ data class DnsProvider(
         )
 
         val ALL_PROVIDERS = listOf(
+            KAHF_GUARD_MEDIUM,
             CLEANBROWSING_FAMILY,
             CLOUDFLARE_FAMILY,
             ADGUARD_FAMILY,
@@ -61,6 +72,6 @@ data class DnsProvider(
         )
 
         fun findById(id: String): DnsProvider =
-            ALL_PROVIDERS.firstOrNull { it.id == id } ?: CLEANBROWSING_FAMILY
+            ALL_PROVIDERS.firstOrNull { it.id == id } ?: KAHF_GUARD_MEDIUM
     }
 }

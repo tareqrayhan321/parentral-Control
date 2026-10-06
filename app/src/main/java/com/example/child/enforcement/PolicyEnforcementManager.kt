@@ -88,9 +88,10 @@ class DefaultPolicyEnforcementManager(
         }
 
         // Apply suspension via DevicePolicyManager
+        // Self-heal mandatory DNS (child was offline when the parent turned it on, etc.).
+        // Works with Device Owner or with the adb-granted WRITE_SECURE_SETTINGS permission.
+        deviceOwnerManager.reassertMandatoryDns()
         if (deviceOwnerManager.isDeviceOwner()) {
-            // Self-heal mandatory DNS (child was offline when the parent turned it on, etc.)
-            deviceOwnerManager.reassertMandatoryDns()
             deviceOwnerManager.syncSuspendedPackages(
                 desiredSuspendedPackages = packagesToSuspend,
                 allTrackedPackages = allTrackedPackages

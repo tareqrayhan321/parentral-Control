@@ -77,7 +77,7 @@ fun ChildDashboardScreen(
     isSupervised: Boolean,
     isCameraBlocked: Boolean,
     isMandatoryDnsEnforced: Boolean = true,
-    enforcedDnsHost: String = "family-filter-dns.cleanbrowsing.org",
+    enforcedDnsHost: String = "medium.kahfguard.com",
     deviceName: String?,
     isChildConnectedToParent: Boolean = false,
     connectedParentName: String = "Parent's Phone",

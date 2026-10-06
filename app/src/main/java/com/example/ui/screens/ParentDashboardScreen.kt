@@ -134,7 +134,7 @@ fun ParentDashboardScreen(
     isCameraBlocked: Boolean,
     isInstallBlocked: Boolean,
     isMandatoryDnsEnforced: Boolean = true,
-    enforcedDnsHost: String = "family-filter-dns.cleanbrowsing.org",
+    enforcedDnsHost: String = "medium.kahfguard.com",
     instantLockdown: Boolean,
     qrBitmap: Bitmap?,
     qrRemainingSeconds: Int,

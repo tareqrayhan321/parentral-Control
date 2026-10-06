@@ -482,8 +482,9 @@ fun ParentHomeTab(
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Text(
                                             text = when {
-                                                childDnsActive == true -> "Safe Internet: ON and locked on child phone"
-                                                !isDeviceOwner -> "Safe Internet: NOT on. Child phone has no Device Owner, so DNS cannot be forced."
+                                                childDnsActive == true && isDeviceOwner -> "Safe Internet: ON and locked on child phone"
+                                                childDnsActive == true -> "Safe Internet: ON on child phone (not locked; child can change it in Settings)"
+                                                childDnsActive == false && !isDeviceOwner -> "Safe Internet: NOT on. Child phone needs the one-time WRITE_SECURE_SETTINGS grant (or Device Owner)."
                                                 childDnsActive == false -> "Safe Internet: requested, NOT on yet. Retrying every minute."
                                                 else -> "Safe Internet: requested, waiting for the child phone to report."
                                             },

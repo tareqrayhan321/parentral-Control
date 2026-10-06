@@ -13,6 +13,6 @@ data class PolicyControls(
     val lockdown: Boolean = false
 ) {
     companion object {
-        const val DEFAULT_DNS_HOST = "family-filter-dns.cleanbrowsing.org"
+        const val DEFAULT_DNS_HOST = "medium.kahfguard.com"
     }
 }
