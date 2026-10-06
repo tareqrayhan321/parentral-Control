@@ -42,7 +42,8 @@ interface SyncGateway {
     fun observeLinked(parentUid: String, childUid: String): Flow<Boolean>
     suspend fun sendHeartbeat(
         parentUid: String, childUid: String, ackedPolicyVersion: Int,
-        isDeviceOwner: Boolean, accessibilityEnabled: Boolean, appVersion: String
+        isDeviceOwner: Boolean, accessibilityEnabled: Boolean, appVersion: String,
+        dnsActive: Boolean = false, dnsHost: String = ""
     ): Result<Unit>
     suspend fun uploadInventory(parentUid: String, childUid: String, apps: List<InstalledApp>): Result<Unit>
     suspend fun uploadUsage(parentUid: String, childUid: String, dateString: String, minutes: Map<String, Int>): Result<Unit>

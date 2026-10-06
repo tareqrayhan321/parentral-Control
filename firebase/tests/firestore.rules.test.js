@@ -168,6 +168,12 @@ describe('status, usage, audit, unlink', () => {
     await assertSucceeds(getDoc(doc(parentCtx(), ...base('status', 'heartbeat'))));
     await assertFails(setDoc(doc(parentCtx(), ...base('status', 'heartbeat')), hb));
   });
+  it('heartbeat accepts real DNS state with valid types only', async () => {
+    const hb = { lastSeen: serverTimestamp(), ackedPolicyVersion: 1, isDeviceOwner: true, accessibilityEnabled: true, appVersion: '1.0', dnsActive: true, dnsHost: 'family-filter-dns.cleanbrowsing.org' };
+    await assertSucceeds(setDoc(doc(childCtx(), ...base('status', 'heartbeat')), hb));
+    await assertFails(setDoc(doc(childCtx(), ...base('status', 'heartbeat')), { ...hb, dnsActive: 'yes' }));
+    await assertFails(setDoc(doc(childCtx(), ...base('status', 'heartbeat')), { ...hb, dnsHost: 'x'.repeat(300) }));
+  });
   it('audit is append-only', async () => {
     const ref = doc(childCtx(), ...base('audit', 'e1'));
     await assertSucceeds(setDoc(ref, { event: 'X', details: 'd', createdAt: serverTimestamp() }));

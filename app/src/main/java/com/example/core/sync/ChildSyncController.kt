@@ -6,6 +6,7 @@ import android.util.Log
 import com.example.core.apps.InstalledAppsProvider
 import com.example.core.database.repository.PolicyRepository
 import com.example.core.policy.PolicyControls
+import com.example.core.policy.PrivateDnsState
 import com.example.core.usage.UsageRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -182,9 +183,18 @@ class ChildSyncController(
     }
 
     private suspend fun heartbeatLoop(parentUid: String, childUid: String) {
+        var lastSentAt = 0L
+        var lastDns: PrivateDnsState.Snapshot? = null
         while (true) {
-            sendHeartbeat(parentUid, childUid)
-            delay(HEARTBEAT_INTERVAL_MS)
+            // Report right away when the real DNS state changes, otherwise on the normal interval.
+            val dns = PrivateDnsState.read(context)
+            val due = System.currentTimeMillis() - lastSentAt >= HEARTBEAT_INTERVAL_MS
+            if (due || dns != lastDns) {
+                sendHeartbeat(parentUid, childUid)
+                lastSentAt = System.currentTimeMillis()
+                lastDns = dns
+            }
+            delay(DNS_WATCH_INTERVAL_MS)
         }
     }
 
@@ -211,13 +221,16 @@ class ChildSyncController(
     }
 
     private suspend fun sendHeartbeat(parentUid: String, childUid: String) {
+        val dns = PrivateDnsState.read(context)
         gateway.sendHeartbeat(
             parentUid = parentUid,
             childUid = childUid,
             ackedPolicyVersion = prefs.getInt(KEY_ACKED, 0),
             isDeviceOwner = isDeviceOwner(),
             accessibilityEnabled = isAccessibilityEnabled(),
-            appVersion = appVersion()
+            appVersion = appVersion(),
+            dnsActive = dns.active,
+            dnsHost = dns.host
         ).onSuccess { _status.value = "Report sent at ${now()}" }
             .onFailure {
                 Log.w(TAG, "Heartbeat failed", it)
@@ -257,6 +270,7 @@ class ChildSyncController(
         private const val KEY_ACKED_DEVICE = "acked_remote_version_device"
         private const val SIGN_IN_WAIT_SECONDS = 20
         private const val HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000L
+        private const val DNS_WATCH_INTERVAL_MS = 60 * 1000L
         private const val RETRY_DELAY_MS = 30_000L
         private const val USAGE_INTERVAL_MS = 5 * 60 * 1000L
         private const val INVENTORY_INTERVAL_MS = 5 * 60 * 1000L

@@ -186,7 +186,9 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
                 ackedPolicyVersion = (s.getLong("ackedPolicyVersion") ?: 0L).toInt(),
                 isDeviceOwner = s.getBoolean("isDeviceOwner") ?: false,
                 accessibilityEnabled = s.getBoolean("accessibilityEnabled") ?: false,
-                appVersion = s.getString("appVersion")
+                appVersion = s.getString("appVersion"),
+                dnsActive = s.getBoolean("dnsActive") ?: false,
+                dnsHost = s.getString("dnsHost").orEmpty()
             )
         }
     }
@@ -313,7 +315,8 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
 
     override suspend fun sendHeartbeat(
         parentUid: String, childUid: String, ackedPolicyVersion: Int,
-        isDeviceOwner: Boolean, accessibilityEnabled: Boolean, appVersion: String
+        isDeviceOwner: Boolean, accessibilityEnabled: Boolean, appVersion: String,
+        dnsActive: Boolean, dnsHost: String
     ): Result<Unit> = runCatching {
         if (!isAvailable) throw notConfigured()
         deviceRef(parentUid, childUid).collection("status").document("heartbeat").set(
@@ -322,7 +325,9 @@ class FirebaseSyncGateway(private val context: Context) : SyncGateway {
                 "ackedPolicyVersion" to ackedPolicyVersion.toLong(),
                 "isDeviceOwner" to isDeviceOwner,
                 "accessibilityEnabled" to accessibilityEnabled,
-                "appVersion" to appVersion
+                "appVersion" to appVersion,
+                "dnsActive" to dnsActive,
+                "dnsHost" to dnsHost.take(253)
             )
         ).await()
     }

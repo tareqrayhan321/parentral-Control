@@ -515,8 +515,10 @@ fun ChildDashboardScreen(
                             Text(
                                 text = if (isMandatoryDnsEnforced) {
                                     "Adult websites and malicious domains are blocked automatically across all browsers and apps."
+                                } else if (!isDeviceOwner) {
+                                    "DNS is NOT on: this phone is not set up as Device Owner, so DNS cannot be forced or locked."
                                 } else {
-                                    "No mandatory DNS protection active."
+                                    "DNS is NOT on yet (waiting for the parent's setting or a working internet connection)."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant

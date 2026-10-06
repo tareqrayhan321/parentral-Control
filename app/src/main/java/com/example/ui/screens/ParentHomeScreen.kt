@@ -128,6 +128,8 @@ fun ParentHomeTab(
     isInstallBlocked: Boolean,
     isMandatoryDnsEnforced: Boolean,
     enforcedDnsHost: String,
+    /** Real state reported by the child phone: true = Private DNS is on, false = off, null = no report yet. */
+    childDnsActive: Boolean? = null,
     instantLockdown: Boolean,
     qrBitmap: Bitmap?,
     qrRemainingSeconds: Int,
@@ -301,8 +303,12 @@ fun ParentHomeTab(
                     QuickAction(
                         icon = Icons.Default.Public,
                         label = "Safe Internet",
-                        status = if (isMandatoryDnsEnforced) "On" else "Off",
-                        active = isMandatoryDnsEnforced,
+                        status = when {
+                            !isMandatoryDnsEnforced -> "Off"
+                            childDnsActive == true -> "On"
+                            else -> "Pending"
+                        },
+                        active = isMandatoryDnsEnforced && childDnsActive == true,
                         tone = StatusAllowed,
                         tag = "quick_dns",
                         modifier = Modifier.weight(1f),
@@ -474,6 +480,17 @@ fun ParentHomeTab(
 
                                     if (isMandatoryDnsEnforced) {
                                         Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = when {
+                                                childDnsActive == true -> "Safe Internet: ON and locked on child phone"
+                                                !isDeviceOwner -> "Safe Internet: NOT on. Child phone has no Device Owner, so DNS cannot be forced."
+                                                childDnsActive == false -> "Safe Internet: requested, NOT on yet. Retrying every minute."
+                                                else -> "Safe Internet: requested, waiting for the child phone to report."
+                                            },
+                                            fontSize = 12.sp,
+                                            color = if (childDnsActive == true) StatusAllowed else InkSoft
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
                                         Text("Safe Internet provider", fontWeight = FontWeight.SemiBold, color = InkDark)
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)

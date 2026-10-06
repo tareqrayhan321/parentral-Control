@@ -32,6 +32,7 @@ import com.example.core.security.PinVerificationResult
 import com.example.core.policy.ControlsApplier
 import com.example.core.policy.ControlsStore
 import com.example.core.policy.PolicyControls
+import com.example.core.policy.PrivateDnsState
 import com.example.core.sync.ChildStatusFormatter
 import com.example.child.protection.DeviceProtectionManager
 import com.example.core.sync.ChildSyncController
@@ -211,6 +212,12 @@ class MainViewModel @JvmOverloads constructor(
             delay(60_000L)
         }
     }
+
+    /** Real Private DNS state of THIS phone, read from the OS every minute (used on the child phone). */
+    val osDns: StateFlow<PrivateDnsState.Snapshot> = clock
+        .map { PrivateDnsState.read(getApplication<Application>()) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PrivateDnsState.Snapshot(false, ""))
 
     val childStatusLabel: StateFlow<String> = combine(_deviceInfo, _childHeartbeat, clock) { device, hb, now ->
         ChildStatusFormatter.format(device != null, hb, now)

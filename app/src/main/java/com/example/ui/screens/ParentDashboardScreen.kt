@@ -251,6 +251,7 @@ fun ParentDashboardScreen(
                     isInstallBlocked = isInstallBlocked,
                     isMandatoryDnsEnforced = isMandatoryDnsEnforced,
                     enforcedDnsHost = enforcedDnsHost,
+                    childDnsActive = childHeartbeats[selectedChildId ?: deviceInfo?.deviceId]?.dnsActive,
                     instantLockdown = instantLockdown,
                     qrBitmap = qrBitmap,
                     qrRemainingSeconds = qrRemainingSeconds,

@@ -117,7 +117,11 @@ service cloud.firestore {
           allow read: if isParent(pid) || linkedChild(pid, cid);
           allow create, update: if linkedChild(pid, cid) && name == 'heartbeat'
             && request.resource.data.keys().hasOnly(
-                 ['lastSeen', 'ackedPolicyVersion', 'isDeviceOwner', 'accessibilityEnabled', 'appVersion'])
+                 ['lastSeen', 'ackedPolicyVersion', 'isDeviceOwner', 'accessibilityEnabled', 'appVersion',
+                  'dnsActive', 'dnsHost'])
+            && (!('dnsActive' in request.resource.data) || request.resource.data.dnsActive is bool)
+            && (!('dnsHost' in request.resource.data)
+                || (request.resource.data.dnsHost is string && request.resource.data.dnsHost.size() <= 253))
             && request.resource.data.lastSeen == request.time;
         }
 

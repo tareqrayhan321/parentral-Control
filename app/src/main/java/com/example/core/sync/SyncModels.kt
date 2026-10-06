@@ -30,7 +30,10 @@ data class RemoteHeartbeat(
     val ackedPolicyVersion: Int,
     val isDeviceOwner: Boolean,
     val accessibilityEnabled: Boolean,
-    val appVersion: String? = null
+    val appVersion: String? = null,
+    /** Real OS state reported by the child: Private DNS is on and pointing at [dnsHost]. */
+    val dnsActive: Boolean = false,
+    val dnsHost: String = ""
 )
 data class RemoteInventory(val apps: List<InstalledApp>)
 

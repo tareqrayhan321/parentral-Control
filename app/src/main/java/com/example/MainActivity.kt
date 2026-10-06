@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 val isInstallBlocked by viewModel.isInstallBlocked.collectAsState()
                 val isMandatoryDnsEnforced by viewModel.isMandatoryDnsEnforced.collectAsState()
                 val enforcedDnsHost by viewModel.enforcedDnsHost.collectAsState()
+                val osDns by viewModel.osDns.collectAsState()
                 val instantLockdown by viewModel.instantLockdown.collectAsState()
                 val qrBitmap by viewModel.qrBitmap.collectAsState()
                 val qrRemainingSeconds by viewModel.qrRemainingSeconds.collectAsState()
@@ -129,8 +130,8 @@ class MainActivity : ComponentActivity() {
                                     isDeviceOwner = isDeviceOwner,
                                     isSupervised = isSupervised,
                                     isCameraBlocked = isCameraBlocked,
-                                    isMandatoryDnsEnforced = isMandatoryDnsEnforced,
-                                    enforcedDnsHost = enforcedDnsHost,
+                                    isMandatoryDnsEnforced = osDns.active,
+                                    enforcedDnsHost = osDns.host,
                                     deviceName = deviceInfo?.deviceName,
                                     isChildConnectedToParent = isChildConnectedToParent,
                                     connectedParentName = connectedParentName,

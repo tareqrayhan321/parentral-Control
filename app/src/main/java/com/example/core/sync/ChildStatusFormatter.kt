@@ -11,6 +11,7 @@ object ChildStatusFormatter {
         val state = if (nowMs - last <= ONLINE_WINDOW_MS) "🟢 Online" else "⚪ Offline"
         val ago = if (ageMin < 1) "just now" else "$ageMin min ago"
         val owner = if (hb.isDeviceOwner) "Device Owner" else "no Device Owner"
-        return "$state • last report $ago • rules v${hb.ackedPolicyVersion} • $owner"
+        val dns = if (hb.dnsActive) "DNS on" else "DNS off"
+        return "$state • last report $ago • rules v${hb.ackedPolicyVersion} • $owner • $dns"
     }
 }
