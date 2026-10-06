@@ -89,6 +89,8 @@ class DefaultPolicyEnforcementManager(
 
         // Apply suspension via DevicePolicyManager
         if (deviceOwnerManager.isDeviceOwner()) {
+            // Self-heal mandatory DNS (child was offline when the parent turned it on, etc.)
+            deviceOwnerManager.reassertMandatoryDns()
             deviceOwnerManager.syncSuspendedPackages(
                 desiredSuspendedPackages = packagesToSuspend,
                 allTrackedPackages = allTrackedPackages

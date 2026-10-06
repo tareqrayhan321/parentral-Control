@@ -1719,13 +1719,13 @@ private fun PairingTabContent(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Android Enterprise Device Owner Setup (Optional)",
+                        text = "Device Owner Setup (Required for DNS lock, uninstall block, app suspend)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "To enable non-removable OS protection and app suspension via ADB:",
+                        text = "On the child phone: remove all accounts, delete extra users/work profiles, then run via ADB:",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))

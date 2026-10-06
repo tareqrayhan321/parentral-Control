@@ -103,6 +103,12 @@ interface DeviceOwnerManager {
      * Sets mandatory Private DNS on the device and locks Android settings to prevent child modification.
      */
     fun setMandatoryDns(enabled: Boolean, dnsHost: String): Boolean
+
+    /**
+     * Re-applies mandatory Private DNS if the OS state drifted (offline at apply time, host not
+     * reachable yet, setting cleared). Cheap no-op when the OS already matches the desired state.
+     */
+    fun reassertMandatoryDns(): Boolean = true
 }
 
 class AndroidDeviceOwnerManager(
@@ -127,25 +133,57 @@ class AndroidDeviceOwnerManager(
             .putBoolean("mandatory_dns_enabled", enabled)
             .putString("mandatory_dns_host", dnsHost)
             .apply()
+        return applyPrivateDns(enabled, dnsHost)
+    }
 
-        if (isDeviceOwner() && dpm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                if (enabled) {
-                    val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, dnsHost)
-                    dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
-                    Log.i(TAG, "Mandatory DNS mode set to host: $dnsHost (result code: $result)")
-                    return result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR
-                } else {
-                    dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
-                    dpm.setGlobalPrivateDnsModeOpportunistic(adminComponent)
-                    Log.i(TAG, "Mandatory DNS cleared; restored opportunistic mode.")
-                    return true
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error configuring mandatory Private DNS via DPM", e)
-            }
+    /**
+     * Real enforcement. Returns true only when the OS actually holds the requested state.
+     * Without Device Owner nothing can be enforced, so this returns false (it never reports a fake success).
+     */
+    private fun applyPrivateDns(enabled: Boolean, dnsHost: String): Boolean {
+        if (!isDeviceOwner() || dpm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.w(TAG, "Mandatory DNS not enforced: Device Owner / Android 10+ required.")
+            return false
         }
-        return true
+        return try {
+            if (enabled) {
+                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, dnsHost)
+                if (result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
+                    // Lock the Settings UI only after the mode really took effect.
+                    dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                    // A VPN app brings its own DNS and would bypass Private DNS.
+                    dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_VPN)
+                    Log.i(TAG, "Mandatory DNS locked to host: $dnsHost")
+                    true
+                } else {
+                    Log.w(TAG, "Mandatory DNS not applied (result code: $result); will retry.")
+                    false
+                }
+            } else {
+                dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_VPN)
+                dpm.setGlobalPrivateDnsModeOpportunistic(adminComponent)
+                Log.i(TAG, "Mandatory DNS cleared; restored opportunistic mode.")
+                true
+            }
+        } catch (e: Exception) {
+            // SecurityException is thrown e.g. when an unaffiliated secondary user / work profile exists.
+            Log.e(TAG, "Error configuring mandatory Private DNS via DPM", e)
+            false
+        }
+    }
+
+    override fun reassertMandatoryDns(): Boolean {
+        if (!isMandatoryDnsEnforced()) return true
+        if (!isDeviceOwner() || dpm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val host = getEnforcedDnsHost()
+        val inSync = try {
+            dpm.getGlobalPrivateDnsMode(adminComponent) == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME &&
+                dpm.getGlobalPrivateDnsHost(adminComponent) == host
+        } catch (e: Exception) {
+            false
+        }
+        return inSync || applyPrivateDns(true, host)
     }
 
     override fun isSupervisionActive(): Boolean {
@@ -316,10 +354,17 @@ class AndroidDeviceOwnerManager(
             // 5. Prevent unauthorized USB debugging
             dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
 
-            // 6. Enforce Mandatory Private DNS and disallow child from changing it in Android Settings
-            if (isMandatoryDnsEnforced() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, getEnforcedDnsHost())
-                dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+            // 6. Block factory reset and extra users/profiles (a secondary user or work profile also
+            //    blocks the global Private DNS setting and could be used to escape supervision)
+            dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADD_USER)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADD_MANAGED_PROFILE)
+            }
+
+            // 7. Enforce Mandatory Private DNS and disallow child from changing it in Android Settings
+            if (isMandatoryDnsEnforced()) {
+                applyPrivateDns(true, getEnforcedDnsHost())
             }
 
             Log.i(TAG, "Successfully enforced all Android Enterprise device protections.")
@@ -337,6 +382,12 @@ class AndroidDeviceOwnerManager(
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_SAFE_BOOT)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_DATE_TIME)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADD_USER)
+            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_VPN)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADD_MANAGED_PROFILE)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
                 dpm.setGlobalPrivateDnsModeOpportunistic(adminComponent)

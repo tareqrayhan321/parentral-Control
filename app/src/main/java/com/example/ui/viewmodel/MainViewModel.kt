@@ -974,7 +974,17 @@ class MainViewModel @JvmOverloads constructor(
                 version = policy.value.version,
                 details = if (enabled) "Mandatory DNS locked to $dnsHost (Private DNS Settings restricted)" else "Mandatory DNS disabled"
             )
-            _statusMessage.value = (if (enabled) "Mandatory DNS Active ($dnsHost)" else "Mandatory DNS Disabled.") + parentHint()
+            if (isParentRole()) {
+                // DNS must reach the child without a manual 'Send rules' press.
+                pushSyncToChild()
+                _statusMessage.value = if (enabled) "Mandatory DNS sent to child ($dnsHost)" else "Mandatory DNS turn-off sent to child."
+            } else {
+                _statusMessage.value = when {
+                    !enabled -> "Mandatory DNS Disabled."
+                    deviceOwnerManager.isDeviceOwner() -> "Mandatory DNS Active ($dnsHost)"
+                    else -> "DNS not locked: Device Owner is not set on this phone."
+                }
+            }
         }
     }
 
